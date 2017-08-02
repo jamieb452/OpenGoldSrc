@@ -31,7 +31,6 @@ if(NOT OGS_ENGINE_IMPL_TYPE)
 		#Default
 		Null
 		AC96
-		#RW17
 		#Mini
 		#Test
 	)

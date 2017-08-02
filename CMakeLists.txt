@@ -33,4 +33,4 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -g -O3")
 add_subdirectory(dep)
 
 # Add engine root directory
-add_subdirectory(ogs)
+add_subdirectory(goldsrc)
