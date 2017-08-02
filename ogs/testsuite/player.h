@@ -6,7 +6,7 @@
 
 #include "osconfig.h"
 #include "funccalls.h"
-#include "rehlds/platform.h"
+#include "rehlds/platform_rehlds.h"
 
 #include <queue>
 #include <unordered_map>

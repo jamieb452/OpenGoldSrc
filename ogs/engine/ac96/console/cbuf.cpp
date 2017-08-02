@@ -47,9 +47,15 @@
 
 sizebuf_t cmd_text;
 
+/*
+============
+Cbuf_Init
+============
+*/
 void Cbuf_Init()
 {
-	SZ_Alloc("cmd_text", &cmd_text, MAX_CMD_BUFFER);
+	//MAX_CMD_BUFFER == 8192
+	SZ_Alloc("cmd_text", &cmd_text, MAX_CMD_BUFFER); // space for commands and script files
 };
 
 /*
@@ -58,13 +64,12 @@ Cbuf_AddText
 
 Adds command text at the end of the buffer
 As new commands are generated from the console or keybindings,
-the text is added to the end of the command buffer.
+the text is added to the end of the command buffer
 ============
 */
-
-void Cbuf_AddText(char *text)
+void Cbuf_AddText(const char *text)
 {
-	int len = Q_strlen(text);
+	/*const*/ int len = Q_strlen(text);
 
 	if(cmd_text.cursize + len >= cmd_text.maxsize)
 	{
@@ -75,10 +80,20 @@ void Cbuf_AddText(char *text)
 	SZ_Write(&cmd_text, text, len);
 };
 
-// When a command wants to issue other commands immediately, the text is
-// inserted at the beginning of the buffer, before any remaining unexecuted
-// commands.
-void Cbuf_InsertText(char *text)
+/*
+============
+Cbuf_InsertText
+
+Adds command text immediately after the current command
+Adds a \n to the text
+FIXME: actually change the command buffer to do less copying
+
+When a command wants to issue other commands immediately, the text is
+inserted at the beginning of the buffer, before any remaining unexecuted
+commands
+============
+*/
+void Cbuf_InsertText(const char *text)
 {
 	int addLen = Q_strlen(text);
 	int currLen = cmd_text.cursize;
@@ -175,8 +190,8 @@ void Cbuf_Execute()
 {
 	int i;
 	char *text;
-	char line[MAX_CMD_LINE];
-	int quotes;
+	char line[MAX_CMD_LINE]; // 1024
+	int quotes; // bool?
 
 	while(cmd_text.cursize)
 	{
@@ -184,12 +199,15 @@ void Cbuf_Execute()
 		text = (char *)cmd_text.data;
 
 		quotes = 0;
+		
 		for(i = 0; i < cmd_text.cursize; i++)
 		{
 			if(text[i] == '"')
 				quotes++;
+			
 			if(!(quotes & 1) && text[i] == ';')
 				break; // don't break if inside a quoted string
+			
 			if(text[i] == '\n')
 				break;
 		};

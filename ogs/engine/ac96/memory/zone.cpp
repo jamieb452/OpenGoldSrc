@@ -78,6 +78,7 @@ typedef struct memzone_s
 */
 #ifndef HOOK_ENGINE
 
+// TODO: not registered? - Solokiller
 cvar_t mem_dbgfile = { "mem_dbgfile", ".\\mem.txt", 0, 0.0f, NULL };
 
 #else // HOOK_ENGINE
@@ -86,11 +87,16 @@ cvar_t mem_dbgfile;
 
 #endif // HOOK_ENGINE
 
-memzone_t *mainzone;
+memzone_t *mainzone = NULL;
 
+/*
+========================
+Z_Malloc
+========================
+*/
 void *Z_Malloc(int size)
 {
-	Z_CheckHeap();
+	Z_CheckHeap(); // DEBUG
 
 	void *buf = Z_TagMalloc(size, 1);
 
@@ -106,7 +112,7 @@ void *Z_TagMalloc(int size, int tag)
 	int extra;
 	memblock_t *start, *rover, *newz, *base;
 
-	if(tag == 0)
+	if(tag == 0) // !tag
 		Sys_Error("%s: tried to use a 0 tag", __FUNCTION__);
 	
 	//
@@ -253,6 +259,11 @@ void Z_CheckHeap()
 	};
 };
 
+/*
+========================
+Z_Print
+========================
+*/
 NOXREF void Z_Print(memzone_t *zone)
 {
 	NOXREFCHECK;
@@ -261,7 +272,8 @@ NOXREF void Z_Print(memzone_t *zone)
 
 	for(memblock_t *block = zone->blocklist.next; ; block = block->next)
 	{
-		Con_Printf("block:%p    size:%7i    tag:%3i\n", block, block->size, block->tag);
+		Con_Printf("block:%p    size:%7i    tag:%3i\n",
+					block, block->size, block->tag);
 
 		// all blocks have been hit
 		if(block->next == &zone->blocklist)

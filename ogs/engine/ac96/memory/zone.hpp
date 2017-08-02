@@ -198,8 +198,8 @@ void Hunk_Free(void *base);
 
 void Cache_Init();
 
-/// Returns NULL if all purgable data was tossed and there still wasn't enough
-/// room
+/// Returns NULL if all purgable data was tossed 
+/// and there still wasn't enough room
 void *Cache_Alloc(cache_user_t *c, int size, char *name);
 
 cache_system_t *Cache_TryAlloc(int size, qboolean nobottom);
@@ -215,6 +215,11 @@ void Cache_MakeLRU(cache_system_t *cs);
 void Cache_UnlinkLRU(cache_system_t *cs);
 
 void Cache_Flush();
+
+/**
+*	Throw everything out, so new data will be demand cached
+*	This does what Cache_Flush used to do in Quake.
+*/
 void Cache_Force_Flush();
 
 NOXREF int ComparePath1(char *path1, char *path2);

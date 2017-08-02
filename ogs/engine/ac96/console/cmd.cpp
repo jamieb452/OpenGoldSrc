@@ -166,7 +166,6 @@ Cmd_Exec_f
 */
 void Cmd_Exec_f()
 {
-	const char *pszFileName;
 	const char *pszFileExt;
 	char *pszFileData;
 	int nAddLen;
@@ -178,7 +177,7 @@ void Cmd_Exec_f()
 		return;
 	}
 
-	pszFileName = Cmd_Argv(1);
+	const char *pszFileName = Cmd_Argv(1);
 	
 	if(!pszFileName || pszFileName[0] == 0)
 		return;
@@ -494,11 +493,10 @@ Breaks the string up into arg tokens.
 */
 void EXT_FUNC Cmd_TokenizeString(const char *text)
 {
-	int i;
 	int arglen;
 
 	// clear args from the last string
-	for(i = 0; i < cmd_argc; i++)
+	for(int i = 0; i < cmd_argc; i++)
 	{
 		Z_Free(cmd_argv[i]);
 		cmd_argv[i] = NULL;
@@ -603,12 +601,17 @@ void Cmd_InsertCommand(cmd_function_t *cmd)
 	*p = cmd;
 }
 
-// Use this for engine inside call only, not from user code, because it doesn't
-// alloc string for the name.
+/*
+============
+Cmd_AddCommand
+
+Use this for engine inside call only, not from user code, 
+because it doesn't alloc string for the name
+============
+*/
 void Cmd_AddCommand(const char *cmd_name, xcommand_t function)
 {
-	cmd_function_t *cmd;
-
+	// because hunk allocation would get stomped
 	if(host_initialized)
 		Sys_Error("%s after host_initialized", __FUNCTION__);
 
@@ -627,7 +630,7 @@ void Cmd_AddCommand(const char *cmd_name, xcommand_t function)
 	}
 
 	// Create cmd_function
-	cmd = (cmd_function_t *)Hunk_Alloc(sizeof(cmd_function_t));
+	cmd_function_t *cmd = (cmd_function_t *)Hunk_Alloc(sizeof(cmd_function_t));
 	cmd->name = cmd_name;
 	cmd->function = function ? function : Cmd_ForwardToServer;
 	cmd->flags = 0;
@@ -665,21 +668,21 @@ void Cmd_AddMallocCommand(char *cmd_name, xcommand_t function, int flag)
 	Cmd_InsertCommand(cmd);
 }
 
-NOXREF void Cmd_AddHUDCommand(char *cmd_name, xcommand_t function)
+NOXREF void Cmd_AddHUDCommand(const char *cmd_name, xcommand_t function)
 {
 	NOXREFCHECK;
 
 	Cmd_AddMallocCommand(cmd_name, function, FCMD_HUD_COMMAND);
 }
 
-NOXREF void Cmd_AddWrapperCommand(char *cmd_name, xcommand_t function)
+NOXREF void Cmd_AddWrapperCommand(const char *cmd_name, xcommand_t function)
 {
 	NOXREFCHECK;
 
 	Cmd_AddMallocCommand(cmd_name, function, FCMD_WRAPPER_COMMAND);
 }
 
-void EXT_FUNC Cmd_AddGameCommand(char *cmd_name, xcommand_t function)
+void EXT_FUNC Cmd_AddGameCommand(const char *cmd_name, xcommand_t function)
 {
 	Cmd_AddMallocCommand(cmd_name, function, FCMD_GAME_COMMAND);
 }
@@ -753,21 +756,26 @@ qboolean Cmd_Exists(const char *cmd_name)
 	while(cmd)
 	{
 		if(!Q_stricmp(cmd_name, cmd->name))
-			return TRUE;
+			return true;
 
 		cmd = cmd->next;
 	}
 
-	return FALSE;
+	return false;
 }
 
+/*
+============
+Cmd_CompleteCommand
+============
+*/
 NOXREF char *Cmd_CompleteCommand(char *search, int forward)
 {
 	NOXREFCHECK;
 
 	// TODO: We have a command name length limit here: prepare for unforeseen
 	// consequences!
-	static char lastpartial[256];
+	static char lastpartial[256] = {};
 	char partial[256];
 	cmd_function_t *cmd;
 	int len;
@@ -778,16 +786,11 @@ NOXREF char *Cmd_CompleteCommand(char *search, int forward)
 	len = Q_strlen(partial);
 
 	// Trim tail spaces
-	for(pPartial = partial + len - 1; pPartial >= partial && *pPartial == ' ';
-	    pPartial--, len--)
-	{
+	for(pPartial = partial + len - 1; pPartial >= partial && *pPartial == ' '; pPartial--, len--)
 		*pPartial = 0;
-	}
 
 	if(!len)
-	{
 		return NULL;
-	}
 
 	if(!Q_stricmp(partial, lastpartial))
 	{
@@ -884,7 +887,7 @@ A complete command line has been parsed, so try to execute it
 FIXME: lookupnoadd the token to speed search?
 ============
 */
-void Cmd_ExecuteString(char *text, cmd_source_t src)
+void Cmd_ExecuteString(const char *text, cmd_source_t src)
 {
 	cmd_source = src;
 	Cmd_TokenizeString(text);
@@ -952,7 +955,7 @@ qboolean Cmd_ForwardToServerInternal(sizebuf_t *pBuf)
 
 void Cmd_ForwardToServer()
 {
-	if(Q_stricmp(Cmd_Argv(0), "cmd") || Q_stricmp(Cmd_Argv(1), "dlfile"))
+	if(Q_stricmp(Cmd_Argv(0), "cmd") || Q_stricmp(Cmd_Argv(1), "dlfile")) // ???
 		Cmd_ForwardToServerInternal(&cls.netchan.message);
 }
 

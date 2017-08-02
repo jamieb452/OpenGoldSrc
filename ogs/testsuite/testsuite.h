@@ -3,7 +3,7 @@
 
 #include "osconfig.h"
 #include "memory.h"
-#include "rehlds/platform.h"
+#include "rehlds/platform_rehlds.h"
 
 #include <string>
 #include <iostream>
