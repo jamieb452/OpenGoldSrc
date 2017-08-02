@@ -13,18 +13,27 @@ if(NOT CMAKE_BUILD_TYPE)
         FORCE
 	)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
-		None Debug Release RelWithDebInfo MinSizeRel
+		None
+		Debug
+		Release
+		RelWithDebInfo
+		MinSizeRel
 	)
 endif()
 
 # Detect the impl type
 if(NOT OGS_ENGINE_IMPL_TYPE)
     set(OGS_ENGINE_IMPL_TYPE Null CACHE STRING
-        "Choose the type of engine implementation, options are: Null AC96 RW17."
+        "Choose the type of engine module implementation"
         FORCE
 	)
     set_property(CACHE OGS_ENGINE_IMPL_TYPE PROPERTY STRINGS
-		Null AC96 RW17
+		#Default
+		Null
+		AC96
+		RW17
+		#Mini
+		#Test
 	)
 endif()
 
