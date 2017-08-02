@@ -1,5 +1,6 @@
 # OpenGoldSource
 [![Build Status](https://travis-ci.org/headcrab-garage/OpenGoldSrc.svg)](https://travis-ci.org/headcrab-garage/OpenGoldSrc)
+[![Code Climate](https://img.shields.io/codeclimate/issues/github/headcrab-garage/OpenGoldSrc.svg)](https://codeclimate.com/github/headcrab-garage/OpenGoldSrc/issues)
 
 >Gold Source is a version of Quake and Quake is open source so maybe that is an option for you.
 >
@@ -73,6 +74,8 @@ Please read the [Contributing Guidelines](CONTRIBUTING.md) before pushing any ch
 You can see [CREDITS](CREDITS.md) file for more details
 
 ## License
+
+[![license](https://img.shields.io/github/license/headcrab-garage/OpenGoldSrc.svg)](https://github.com/headcrab-garage/OpenGoldSrc/blob/master/LICENSE)
 
 Licensed under the terms of GPLv3, see the [LICENSE](LICENSE) file for details  
 Some of the code is originally written by Valve LLC and licensed under terms of Valve license which not fully compatible with GPL because it doesn't allow to sell the product  
