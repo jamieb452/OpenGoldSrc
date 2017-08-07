@@ -1,4 +1,7 @@
 # OpenGoldSource
+
+**[Currently in process of rewriting the engine using the original Quake code](https://github.com/headcrab-garage/ReOGS)**
+
 [![Build Status](https://travis-ci.org/headcrab-garage/OpenGoldSrc.svg)](https://travis-ci.org/headcrab-garage/OpenGoldSrc)
 [![Code Climate](https://img.shields.io/codeclimate/issues/github/headcrab-garage/OpenGoldSrc.svg)](https://codeclimate.com/github/headcrab-garage/OpenGoldSrc/issues)
 
@@ -11,7 +14,7 @@
 ![OGS Logo](docs/OGSLogo1280x512.png?raw=true "OGS Logo")
 
 Open Source implementation (a recreation) of the GoldSrc engine   
-Based on Reverse-engineered (and bugfixed) HLDS aka ReHLDS and Id Tech sources (+ Xash and Metahook)
+Based on original Quake (Id Tech 2) engine sources with [ReHLDS](https://github.com/dreamstalker/rehlds) and [GoldSourceRebuild](https://github.com/headcrab-garage/GoldSourceRebuild) sources applied above (so it's mostly authentic)
 
 For more information about the project you can visit it's official [Wiki](https://github.com/Sh1ft0x0EF/OpenGoldSrc/wiki)
 
