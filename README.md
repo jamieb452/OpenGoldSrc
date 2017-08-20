@@ -1,7 +1,8 @@
 # OpenGoldSource
 
-**[Currently in process of rewriting the engine using the original Quake code as base](https://github.com/headcrab-garage/ReOGS)**
+**[Currently in process of rewriting the engine using the original Quake code as base]()**
 
+[![Build Status](https://ci.appveyor.com/api/projects/status/github/headcrab-garage/OpenGoldSrc?svg=true)](https://ci.appveyor.com/project/headcrab-garage/opengoldsrc)
 [![Build Status](https://travis-ci.org/headcrab-garage/OpenGoldSrc.svg)](https://travis-ci.org/headcrab-garage/OpenGoldSrc)
 [![Code Climate](https://img.shields.io/codeclimate/issues/github/headcrab-garage/OpenGoldSrc.svg)](https://codeclimate.com/github/headcrab-garage/OpenGoldSrc/issues)
 

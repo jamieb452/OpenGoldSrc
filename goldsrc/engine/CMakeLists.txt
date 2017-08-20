@@ -28,9 +28,9 @@ if(NOT OGS_ENGINE_IMPL_TYPE)
         FORCE
 	)
     set_property(CACHE OGS_ENGINE_IMPL_TYPE PROPERTY STRINGS
-		#Default
+		Default
 		Null
-		AC96
+		Evol
 		#Mini
 		#Test
 	)
