@@ -24,7 +24,7 @@ add_sources(
 	${SRC_DIR}/common/port.h
 	${SRC_DIR}/common/Random.cpp
 	${SRC_DIR}/common/Random.h
-	${SRC_DIR}/cstrike/dlls/weapontype.h
+	${SRC_DIR}/dlls/cstrike/weapontype.h
 	${SRC_DIR}/game_shared/bot/bot_profile.cpp
 	${SRC_DIR}/game_shared/bot/bot_profile.h
 	${SRC_DIR}/game_shared/shared_util.cpp

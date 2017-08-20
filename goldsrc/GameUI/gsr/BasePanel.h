@@ -5,7 +5,10 @@
 
 #include <vgui_controls/Panel.h>
 
-
+/**
+*	Parent panel for all GameUI panels (except the console, which the engine parents to the root).
+*	Draws the menu background.
+*/
 class CBasePanel : public vgui2::Panel
 {
 public:
