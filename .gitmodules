@@ -1,0 +1,3 @@
+[submodule "goldsrc-sdk"]
+	path = external/goldsrc-sdk
+	url = https://github.com/headcrab-garage/goldsrc-sdk

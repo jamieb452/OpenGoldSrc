@@ -30,7 +30,7 @@ set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -Os")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -g -O3")
 
 # Add dependencies directory
-add_subdirectory(dep)
+add_subdirectory(external)
 
 # Add engine root directory
 add_subdirectory(goldsrc)

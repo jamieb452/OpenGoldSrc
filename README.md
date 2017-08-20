@@ -2,7 +2,7 @@
 
 **[Currently in process of rewriting the engine using the original Quake code as base]()**
 
-[![Build Status](https://ci.appveyor.com/api/projects/status/github/headcrab-garage/OpenGoldSrc?svg=true)](https://ci.appveyor.com/project/headcrab-garage/opengoldsrc)
+[![Build Status](https://ci.appveyor.com/api/projects/status/github/headcrab-garage/OpenGoldSrc?svg=true)](https://ci.appveyor.com/project/Sh1ft0x0EF/opengoldsrc)
 [![Build Status](https://travis-ci.org/headcrab-garage/OpenGoldSrc.svg)](https://travis-ci.org/headcrab-garage/OpenGoldSrc)
 [![Code Climate](https://img.shields.io/codeclimate/issues/github/headcrab-garage/OpenGoldSrc.svg)](https://codeclimate.com/github/headcrab-garage/OpenGoldSrc/issues)
 
@@ -17,7 +17,7 @@
 Open Source implementation (a recreation) of the GoldSrc engine   
 Based on original Quake (Id Tech 2) engine sources with [ReHLDS](https://github.com/dreamstalker/rehlds) and [GoldSourceRebuild](https://github.com/headcrab-garage/GoldSourceRebuild) sources applied above (so it's mostly authentic)
 
-For more information about the project you can visit it's official [Wiki](https://github.com/Sh1ft0x0EF/OpenGoldSrc/wiki)
+For more information about the project you can visit it's official [Wiki](https://github.com/headcrab-garage/OpenGoldSrc/wiki)
 
 Since no one from Valve Corp doesn't want to even touch their original GoldSrc engine sources the decision to write a custom implementation of it was made  
 **OpenGoldSrc** (or simply **OGS**) is a custom implementation of the original GoldSrc engine based on the source code that was

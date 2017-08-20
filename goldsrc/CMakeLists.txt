@@ -31,29 +31,35 @@ include_directories(
 
 # Add our modules
 ##add_subdirectory(dbg)
-#add_subdirectory(tier1)
+
 add_subdirectory(dedicated)
 #add_subdirectory(dedicated-legacy)
-#add_subdirectory(engine)
-##add_subdirectory(filesystem)
+
+add_subdirectory(engine)
+add_subdirectory(filesystem)
 
 #add_subdirectory(cl_dll)
 #add_subdirectory(dlls)
 
 #add_subdirectory(rw17/game)
 
-##add_subdirectory(gameui)
-#add_subdirectory(hltv)
-add_subdirectory(hookers)
-add_subdirectory(launcher)
+add_subdirectory(GameUI)
+#add_subdirectory(HLTV)
+##add_subdirectory(hookers)
+
+##add_subdirectory(launcher)
+add_subdirectory(launcher-gsr)
+
 #add_subdirectory(particleman)
-add_subdirectory(rehlds)
+##add_subdirectory(rehlds)
 #add_subdirectory(render)
-#add_subdirectory(sound)
 #add_subdirectory(testsuite)
-add_subdirectory(tier0)
+##add_subdirectory(tier0)
 #add_subdirectory(unittests)
-add_subdirectory(vgui)
+##add_subdirectory(vgui)
+
+# Add VGUI2 first since it's referenced by other projects
 ##add_subdirectory(vgui2)
+
 #add_subdirectory(voice)
 add_subdirectory(vstdlib)
