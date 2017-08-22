@@ -17,8 +17,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
+
 // world.c -- world query functions
 
+//#include "precompiled.h"
 #include "quakedef.h"
 #include "world.h"
 
@@ -30,33 +32,64 @@ line of sight checks trace->crosscontent, but bullets don't
 
 */
 
+hull_t box_hull;
+hull_t beam_hull;
 
-typedef struct
+box_clipnodes_t box_clipnodes;
+box_planes_t box_planes;
+
+beam_planes_t beam_planes;
+
+areanode_t sv_areanodes[32];
+int sv_numareanodes;
+
+#ifdef REHLDS_FIXES
+static link_t *touchLinksNext = NULL;
+#endif
+
+cvar_t sv_force_ent_intersection = { "sv_force_ent_intersection", "0", 0, 0.0f, NULL };
+
+void ClearLink(link_t *l)
 {
-	vec3_t		boxmins, boxmaxs;// enclose the test object along entire move
-	float		*mins, *maxs;	// size of the moving object
-	vec3_t		mins2, maxs2;	// size when clipping against mosnters
-	float		*start, *end;
-	trace_t		trace;
-	int			type;
-	edict_t		*passedict;
-} moveclip_t;
+	l->next = l;
+	l->prev = l;
+}
 
+void RemoveLink(link_t *l)
+{
+#ifdef REHLDS_FIXES
+	if (touchLinksNext == l)
+	{
+		touchLinksNext = l->next;
+	}
+#endif // REHLDS_FIXES
+	l->next->prev = l->prev;
+	l->prev->next = l->next;
+}
 
-int SV_HullPointContents (hull_t *hull, int num, vec3_t p);
+void InsertLinkBefore(link_t *l, link_t *before)
+{
+	l->next = before;
+	l->prev = before->prev;
+	l->next->prev = l;
+	l->prev->next = l;
+#ifdef REHLDS_FIXES
+	if (touchLinksNext == before)
+	{
+		touchLinksNext = l;
+	}
+#endif // REHLDS_FIXES
+}
 
-/*
-===============================================================================
+NOXREF void InsertLinkAfter(link_t *l, link_t *after)
+{
+	NOXREFCHECK;
+	l->prev = after;
+	l->next = after->next;
 
-HULL BOXES
-
-===============================================================================
-*/
-
-
-static	hull_t		box_hull;
-static	dclipnode_t	box_clipnodes[6];
-static	mplane_t	box_planes[6];
+	after->next = l;
+	l->next->prev = l;
+}
 
 /*
 ===================
@@ -66,34 +99,26 @@ Set up the planes and clipnodes so that the six floats of a bounding box
 can just be stored out and get a proper hull_t structure.
 ===================
 */
-void SV_InitBoxHull (void)
+void SV_InitBoxHull()
 {
-	int		i;
-	int		side;
-
-	box_hull.clipnodes = box_clipnodes;
-	box_hull.planes = box_planes;
+	box_hull.clipnodes = &box_clipnodes[0];
+	box_hull.planes = &box_planes[0];
 	box_hull.firstclipnode = 0;
 	box_hull.lastclipnode = 5;
+	Q_memcpy(&beam_hull, &box_hull, sizeof(beam_hull));
+	beam_hull.planes = &beam_planes[0];
 
-	for (i=0 ; i<6 ; i++)
+	for (int i = 0; i < 6; i++)
 	{
+		int side = i & 1;
 		box_clipnodes[i].planenum = i;
-		
-		side = i&1;
-		
-		box_clipnodes[i].children[side] = CONTENTS_EMPTY;
-		if (i != 5)
-			box_clipnodes[i].children[side^1] = i + 1;
-		else
-			box_clipnodes[i].children[side^1] = CONTENTS_SOLID;
-		
-		box_planes[i].type = i>>1;
-		box_planes[i].normal[i>>1] = 1;
+		box_clipnodes[i].children[side] = -1;
+		box_clipnodes[i].children[side ^ 1] = (i != 5) ? i + 1 : CONTENTS_SOLID;
+		box_planes[i].type = i >> 1;
+		beam_planes[i].type = 5;
+		box_planes[i].normal[i >> 1] = 1.0f;
 	}
-	
 }
-
 
 /*
 ===================
@@ -103,7 +128,7 @@ To keep everything totally uniform, bounding boxes are turned into small
 BSP trees instead of being compared directly.
 ===================
 */
-hull_t	*SV_HullForBox (vec3_t mins, vec3_t maxs)
+hull_t *SV_HullForBox(const vec_t *mins, const vec_t *maxs)
 {
 	box_planes[0].dist = maxs[0];
 	box_planes[1].dist = mins[0];
@@ -111,11 +136,119 @@ hull_t	*SV_HullForBox (vec3_t mins, vec3_t maxs)
 	box_planes[3].dist = mins[1];
 	box_planes[4].dist = maxs[2];
 	box_planes[5].dist = mins[2];
-
 	return &box_hull;
 }
 
+NOXREF hull_t *SV_HullForBeam(const vec_t *start, const vec_t *end, const vec_t *size)
+{
+	NOXREFCHECK;
+	vec3_t tmp = { 0, 0, 0 };
 
+	beam_planes[0].normal[0] = end[0] - start[0];
+	beam_planes[0].normal[1] = end[1] - start[1];
+	beam_planes[0].normal[2] = end[2] - start[2];
+
+	VectorNormalize(beam_planes[0].normal);
+
+	beam_planes[1].normal[0] = beam_planes[0].normal[0];
+	beam_planes[1].normal[1] = beam_planes[0].normal[1];
+	beam_planes[1].normal[2] = beam_planes[0].normal[2];
+
+	beam_planes[0].dist = _DotProduct((vec_t *)end, beam_planes[0].normal);
+	beam_planes[1].dist = _DotProduct((vec_t *)start, beam_planes[0].normal);
+
+	if (fabs(beam_planes[0].normal[2]) < 0.9f)
+		tmp[2] = 1.0f;
+	else
+		tmp[0] = 1.0f;
+
+	CrossProduct(beam_planes[0].normal, tmp, beam_planes[2].normal);
+	VectorNormalize(beam_planes[2].normal);
+
+	beam_planes[3].normal[0] = beam_planes[2].normal[0];
+	beam_planes[3].normal[1] = beam_planes[2].normal[1];
+	beam_planes[3].normal[2] = beam_planes[2].normal[2];
+
+	beam_planes[2].dist = (start[0] + beam_planes[2].normal[0]) * beam_planes[2].normal[0] + (start[1] + beam_planes[2].normal[1]) * beam_planes[2].normal[1] + (start[2] + beam_planes[2].normal[2]) * beam_planes[2].normal[2];
+
+	tmp[0] = start[0] - beam_planes[2].normal[0];
+	tmp[1] = start[1] - beam_planes[2].normal[1];
+	tmp[2] = start[2] - beam_planes[2].normal[2];
+
+	beam_planes[3].dist = _DotProduct(tmp, beam_planes[2].normal);
+	CrossProduct(beam_planes[2].normal, beam_planes[0].normal, beam_planes[4].normal);
+	VectorNormalize(beam_planes[4].normal);
+
+	beam_planes[5].normal[0] = beam_planes[4].normal[0];
+	beam_planes[5].normal[1] = beam_planes[4].normal[1];
+	beam_planes[5].normal[2] = beam_planes[4].normal[2];
+
+	beam_planes[4].dist = _DotProduct((vec_t *)start, beam_planes[4].normal);
+	beam_planes[5].dist = (start[0] - beam_planes[4].normal[0]) * beam_planes[4].normal[0] + (start[1] - beam_planes[4].normal[1]) * beam_planes[4].normal[1] + (start[2] - beam_planes[4].normal[2]) * beam_planes[4].normal[2];
+	beam_planes[0].dist += fabs(beam_planes[0].normal[0] * size[0]) + fabs(beam_planes[0].normal[1] * size[1]) + fabs(beam_planes[0].normal[2] * size[2]);
+
+	beam_planes[1].dist -= (fabs(beam_planes[1].normal[0] * size[0]) + fabs(beam_planes[1].normal[1] * size[1]) + fabs(beam_planes[1].normal[2] * size[2]));
+	beam_planes[2].dist += fabs(beam_planes[2].normal[0] * size[0]) + fabs(beam_planes[2].normal[1] * size[1]) + fabs(beam_planes[2].normal[2] * size[2]);
+	beam_planes[3].dist -= (fabs(beam_planes[3].normal[0] * size[0]) + fabs(beam_planes[3].normal[1] * size[1]) + fabs(beam_planes[3].normal[2] * size[2]));
+	beam_planes[4].dist += fabs(beam_planes[4].normal[0] * size[0]) + fabs(beam_planes[4].normal[1] * size[1]) + fabs(beam_planes[4].normal[2] * size[2]);
+	beam_planes[5].dist -= (fabs(beam_planes[4].normal[0] * size[0]) + fabs(beam_planes[4].normal[1] * size[1]) + fabs(beam_planes[4].normal[2] * size[2]));
+
+	return &beam_hull;
+}
+
+struct hull_s *SV_HullForBsp(edict_t *ent, const vec_t *mins, const vec_t *maxs, vec_t *offset)
+{
+	model_t *model;
+	hull_t *hull;
+
+	model = Mod_Handle(ent->v.modelindex);
+	if (!model || model->type != mod_brush)
+		Sys_Error("%s: Hit a %s with no model (%s)", __func__, &pr_strings[ent->v.classname], &pr_strings[ent->v.model]);
+
+	float xSize = maxs[0] - mins[0];
+	if (xSize > 8.0f)
+	{
+		if (xSize > 36.0f)
+		{
+			hull = &model->hulls[2];
+		}
+		else
+		{
+			float zSize = maxs[2] - mins[2];
+			if (zSize > 36.0f)
+				hull = &model->hulls[1];
+			else
+				hull = &model->hulls[3];
+		}
+#ifdef REHLDS_FIXES
+		if (sv_rehlds_hull_centering.value && mins[0] + maxs[0] == 0.0f)
+			offset[0] = 0.0f;
+		else
+			offset[0] = hull->clip_mins[0] - mins[0];
+
+		if (sv_rehlds_hull_centering.value && mins[1] + maxs[1] == 0.0f)
+			offset[1] = 0.0f;
+		else
+			offset[1] = hull->clip_mins[1] - mins[1];
+#else // REHLDS_FIXES
+		offset[0] = hull->clip_mins[0] - mins[0];
+		offset[1] = hull->clip_mins[1] - mins[1];
+#endif // REHLDS_FIXES
+		offset[2] = hull->clip_mins[2] - mins[2];
+	}
+	else
+	{
+		hull = &model->hulls[0];
+		offset[0] = model->hulls[0].clip_mins[0];
+		offset[1] = model->hulls[0].clip_mins[1];
+		offset[2] = model->hulls[0].clip_mins[2];
+	}
+
+	offset[0] = ent->v.origin[0] + offset[0];
+	offset[1] = ent->v.origin[1] + offset[1];
+	offset[2] = ent->v.origin[2] + offset[2];
+	return hull;
+}
 
 /*
 ================
@@ -127,48 +260,29 @@ Offset is filled in to contain the adjustment that must be added to the
 testing object's origin to get a point to use with the returned hull.
 ================
 */
-hull_t *SV_HullForEntity (edict_t *ent, vec3_t mins, vec3_t maxs, vec3_t offset)
+hull_t *SV_HullForEntity(edict_t *ent, const vec_t *mins, const vec_t *maxs, vec_t *offset)
 {
-	model_t		*model;
-	vec3_t		size;
-	vec3_t		hullmins, hullmaxs;
-	hull_t		*hull;
+	vec3_t hullmins;
+	vec3_t hullmaxs;
 
-// decide which clipping hull to use, based on the size
 	if (ent->v.solid == SOLID_BSP)
-	{	// explicit hulls in the BSP model
-		if (ent->v.movetype != MOVETYPE_PUSH)
-			Sys_Error ("SOLID_BSP without MOVETYPE_PUSH");
+	{
+		if (ent->v.movetype != MOVETYPE_PUSH && ent->v.movetype != MOVETYPE_PUSHSTEP)
+			Sys_Error("%s: SOLID_BSP without MOVETYPE_PUSH", __func__);
 
-		model = sv.models[ (int)ent->v.modelindex ];
-
-		if (!model || model->type != mod_brush)
-			Sys_Error ("MOVETYPE_PUSH with a non bsp model");
-
-		VectorSubtract (maxs, mins, size);
-		if (size[0] < 3)
-			hull = &model->hulls[0];
-		else if (size[0] <= 32)
-			hull = &model->hulls[1];
-		else
-			hull = &model->hulls[2];
-
-// calculate an offset value to center the origin
-		VectorSubtract (hull->clip_mins, mins, offset);
-		VectorAdd (offset, ent->v.origin, offset);
-	}
-	else
-	{	// create a temp hull from bounding box sizes
-
-		VectorSubtract (ent->v.mins, maxs, hullmins);
-		VectorSubtract (ent->v.maxs, mins, hullmaxs);
-		hull = SV_HullForBox (hullmins, hullmaxs);
-		
-		VectorCopy (ent->v.origin, offset);
+		return SV_HullForBsp(ent, mins, maxs, offset);
 	}
 
-
-	return hull;
+	hullmins[0] = ent->v.mins[0] - maxs[0];
+	hullmins[1] = ent->v.mins[1] - maxs[1];
+	hullmins[2] = ent->v.mins[2] - maxs[2];
+	hullmaxs[0] = ent->v.maxs[0] - mins[0];
+	hullmaxs[1] = ent->v.maxs[1] - mins[1];
+	hullmaxs[2] = ent->v.maxs[2] - mins[2];
+	offset[0] = ent->v.origin[0];
+	offset[1] = ent->v.origin[1];
+	offset[2] = ent->v.origin[2];
+	return SV_HullForBox(hullmins, hullmaxs);
 }
 
 /*
@@ -179,51 +293,59 @@ ENTITY AREA CHECKING
 ===============================================================================
 */
 
-
-areanode_t	sv_areanodes[AREA_NODES];
-int			sv_numareanodes;
-
 /*
 ===============
 SV_CreateAreaNode
 
 ===============
 */
-areanode_t *SV_CreateAreaNode (int depth, vec3_t mins, vec3_t maxs)
+areanode_t *SV_CreateAreaNode(int depth, vec_t *mins, vec_t *maxs)
 {
-	areanode_t	*anode;
-	vec3_t		size;
-	vec3_t		mins1, maxs1, mins2, maxs2;
+	areanode_t *anode;
+	vec3_t mins1;
+	vec3_t maxs2;
+	vec3_t size;
+	vec3_t maxs1;
+	vec3_t mins2;
+	float fmid;
 
-	anode = &sv_areanodes[sv_numareanodes];
-	sv_numareanodes++;
-
-	ClearLink (&anode->trigger_edicts);
-	ClearLink (&anode->solid_edicts);
-	
-	if (depth == AREA_DEPTH)
+	anode = &sv_areanodes[sv_numareanodes++];
+	ClearLink(&anode->trigger_edicts);
+	ClearLink(&anode->solid_edicts);
+	if (depth == 4)
 	{
 		anode->axis = -1;
-		anode->children[0] = anode->children[1] = NULL;
+		anode->children[0] = NULL;
+		anode->children[1] = NULL;
 		return anode;
 	}
-	
-	VectorSubtract (maxs, mins, size);
-	if (size[0] > size[1])
-		anode->axis = 0;
-	else
-		anode->axis = 1;
-	
-	anode->dist = 0.5 * (maxs[anode->axis] + mins[anode->axis]);
-	VectorCopy (mins, mins1);	
-	VectorCopy (mins, mins2);	
-	VectorCopy (maxs, maxs1);	
-	VectorCopy (maxs, maxs2);	
-	
-	maxs1[anode->axis] = mins2[anode->axis] = anode->dist;
-	
-	anode->children[0] = SV_CreateAreaNode (depth+1, mins2, maxs2);
-	anode->children[1] = SV_CreateAreaNode (depth+1, mins1, maxs1);
+
+	size[0] = maxs[0] - mins[0];
+	size[1] = maxs[1] - mins[1];
+	anode->axis = (size[0] <= size[1]) ? 1 : 0;
+	mins1[0] = mins[0];
+	mins1[1] = mins[1];
+	mins1[2] = mins[2];
+
+	mins2[0] = mins[0];
+	mins2[1] = mins[1];
+	mins2[2] = mins[2];
+
+	maxs1[0] = maxs[0];
+	maxs1[1] = maxs[1];
+	maxs1[2] = maxs[2];
+
+	maxs2[0] = maxs[0];
+	maxs2[1] = maxs[1];
+	maxs2[2] = maxs[2];
+
+	fmid = 0.5f * (mins[anode->axis] + maxs[anode->axis]);
+	mins2[anode->axis] = fmid;
+	maxs1[anode->axis] = fmid;
+
+	anode->dist = fmid;
+	anode->children[0] = SV_CreateAreaNode(depth + 1, mins2, maxs2);
+	anode->children[1] = SV_CreateAreaNode(depth + 1, mins1, maxs1);
 
 	return anode;
 }
@@ -234,15 +356,15 @@ SV_ClearWorld
 
 ===============
 */
-void SV_ClearWorld (void)
+void SV_ClearWorld()
 {
-	SV_InitBoxHull ();
+	SV_InitBoxHull();
 	
-	memset (sv_areanodes, 0, sizeof(sv_areanodes));
+	Q_memset(sv_areanodes, 0, sizeof(sv_areanodes));
+	
 	sv_numareanodes = 0;
-	SV_CreateAreaNode (0, sv.worldmodel->mins, sv.worldmodel->maxs);
+	SV_CreateAreaNode(0, sv.worldmodel->mins, sv.worldmodel->maxs);
 }
-
 
 /*
 ===============
@@ -250,65 +372,94 @@ SV_UnlinkEdict
 
 ===============
 */
-void SV_UnlinkEdict (edict_t *ent)
+void SV_UnlinkEdict(edict_t *ent)
 {
+	// not linked in anywhere
 	if (!ent->area.prev)
-		return;		// not linked in anywhere
-	RemoveLink (&ent->area);
+		return;
+
+	RemoveLink(&ent->area);
 	ent->area.prev = ent->area.next = NULL;
 }
-
 
 /*
 ====================
 SV_TouchLinks
 ====================
 */
-void SV_TouchLinks ( edict_t *ent, areanode_t *node )
+void SV_TouchLinks(edict_t *ent, areanode_t *node)
 {
-	link_t		*l, *next;
-	edict_t		*touch;
-	int			old_self, old_other;
+	edict_t *touch;
+#ifndef REHLDS_FIXES
+	link_t *touchLinksNext;
+#endif // REHLDS_FIXES
 
-// touch linked edicts
-	for (l = node->trigger_edicts.next ; l != &node->trigger_edicts ; l = next)
+	for (link_t *l = node->trigger_edicts.next; l != &node->trigger_edicts; l = touchLinksNext)
 	{
-		next = l->next;
-		touch = EDICT_FROM_AREA(l);
+		touchLinksNext = l->next;
+		touch = (edict_t *)((char *)l - offsetof(edict_t, area));
 		if (touch == ent)
 			continue;
-		if (!touch->v.touch || touch->v.solid != SOLID_TRIGGER)
+
+		if (ent->v.groupinfo != 0 && touch->v.groupinfo != 0)
+		{
+			if (g_groupop)
+			{
+				if (g_groupop == GROUP_OP_NAND && (ent->v.groupinfo & touch->v.groupinfo))
+					continue;
+			}
+			else
+			{
+				if (!(ent->v.groupinfo & touch->v.groupinfo))
+					continue;
+			}
+		}
+
+#ifdef REHLDS_FIXES
+		if ((ent->v.flags & FL_KILLME) || (touch->v.flags & FL_KILLME))
 			continue;
-		if (ent->v.absmin[0] > touch->v.absmax[0]
-		|| ent->v.absmin[1] > touch->v.absmax[1]
-		|| ent->v.absmin[2] > touch->v.absmax[2]
-		|| ent->v.absmax[0] < touch->v.absmin[0]
-		|| ent->v.absmax[1] < touch->v.absmin[1]
-		|| ent->v.absmax[2] < touch->v.absmin[2] )
-			continue;
+#endif // REHLDS_FIXES
 
-		old_self = pr_global_struct->self;
-		old_other = pr_global_struct->other;
+		if (touch->v.solid == SOLID_TRIGGER
+			&& ent->v.absmin[0] <= touch->v.absmax[0]
+			&& ent->v.absmin[1] <= touch->v.absmax[1]
+			&& ent->v.absmin[2] <= touch->v.absmax[2]
+			&& ent->v.absmax[0] >= touch->v.absmin[0]
+			&& ent->v.absmax[1] >= touch->v.absmin[1]
+			&& ent->v.absmax[2] >= touch->v.absmin[2])
+		{
+			if (Mod_GetType(touch->v.modelindex) == mod_brush)
+			{
+				vec3_t offset;
+				hull_t *hull = SV_HullForBsp(touch, ent->v.mins, ent->v.maxs, offset);
 
-		pr_global_struct->self = EDICT_TO_PROG(touch);
-		pr_global_struct->other = EDICT_TO_PROG(ent);
-		pr_global_struct->time = sv.time;
-		PR_ExecuteProgram (touch->v.touch);
+				vec3_t localPosition;
+				localPosition[0] = ent->v.origin[0] - offset[0];
+				localPosition[1] = ent->v.origin[1] - offset[1];
+				localPosition[2] = ent->v.origin[2] - offset[2];
 
-		pr_global_struct->self = old_self;
-		pr_global_struct->other = old_other;
+				int contents = SV_HullPointContents(hull, hull->firstclipnode, localPosition);
+				if (contents != CONTENTS_SOLID)
+					continue;
+			}
+
+			gGlobalVariables.time = (float)sv.time;
+			gEntityInterface.pfnTouch(touch, ent);
+		}
 	}
-	
-// recurse down both sides
-	if (node->axis == -1)
-		return;
-	
-	if ( ent->v.absmax[node->axis] > node->dist )
-		SV_TouchLinks ( ent, node->children[0] );
-	if ( ent->v.absmin[node->axis] < node->dist )
-		SV_TouchLinks ( ent, node->children[1] );
-}
+#ifdef REHLDS_FIXES
+	touchLinksNext = NULL;
+#endif // REHLDS_FIXES
 
+	if (node->axis != -1)
+	{
+		if (ent->v.absmax[node->axis] > node->dist)
+			SV_TouchLinks(ent, node->children[0]);
+
+		if (node->dist > ent->v.absmin[node->axis])
+			SV_TouchLinks(ent, node->children[1]);
+	}
+}
 
 /*
 ===============
@@ -316,43 +467,148 @@ SV_FindTouchedLeafs
 
 ===============
 */
-void SV_FindTouchedLeafs (edict_t *ent, mnode_t *node)
+#ifndef REHLDS_OPT_PEDANTIC
+void SV_FindTouchedLeafs(edict_t *ent, mnode_t *node, int *topnode)
 {
-	mplane_t	*splitplane;
-	mleaf_t		*leaf;
-	int			sides;
-	int			leafnum;
+	mplane_t *splitplane;
+	int sides;
 
 	if (node->contents == CONTENTS_SOLID)
 		return;
-	
-// add an efrag if the node is a leaf
 
-	if ( node->contents < 0)
+	if (node->contents < 0)
 	{
-		if (ent->num_leafs == MAX_ENT_LEAFS)
-			return;
-
-		leaf = (mleaf_t *)node;
-		leafnum = leaf - sv.worldmodel->leafs - 1;
-
-		ent->leafnums[ent->num_leafs] = leafnum;
-		ent->num_leafs++;			
+		if (ent->num_leafs < MAX_ENT_LEAFS)
+		{
+			mleaf_t *leaf = (mleaf_t *)node;
+			int leafnum = leaf - sv.worldmodel->leafs - 1;
+			ent->leafnums[ent->num_leafs] = leafnum;
+			ent->num_leafs++;
+		}
+		else
+		{
+			ent->num_leafs = MAX_ENT_LEAFS + 1;
+		}
 		return;
 	}
-	
-// NODE_MIXED
 
 	splitplane = node->plane;
-	sides = BOX_ON_PLANE_SIDE(ent->v.absmin, ent->v.absmax, splitplane);
-	
-// recurse down the contacted sides
+	if (splitplane->type >= 3)
+	{
+		sides = BoxOnPlaneSide(ent->v.absmin, ent->v.absmax, splitplane);
+	}
+	else
+	{
+		if (splitplane->dist > ent->v.absmin[splitplane->type])
+		{
+			if (splitplane->dist < ent->v.absmax[splitplane->type])
+			{
+				sides = 3;
+			}
+			else
+			{
+				sides = 2;
+			}
+		}
+		else
+		{
+			sides = 1;
+		}
+	}
+
+	if (sides == 3)
+	{
+		if (*topnode == -1)
+			*topnode = node - sv.worldmodel->nodes;
+	}
+
 	if (sides & 1)
-		SV_FindTouchedLeafs (ent, node->children[0]);
-		
+		SV_FindTouchedLeafs(ent, node->children[0], topnode);
+
 	if (sides & 2)
-		SV_FindTouchedLeafs (ent, node->children[1]);
+		SV_FindTouchedLeafs(ent, node->children[1], topnode);
 }
+#else // REHLDS_OPT_PEDANTIC
+// unrolled some tail recursion
+void SV_FindTouchedLeafs(edict_t *ent, mnode_t *node, int *topnode)
+{
+	mplane_t *splitplane;
+	int sides;
+
+	while (1)
+	{
+		if (node->contents == CONTENTS_SOLID)
+			return;
+
+		if (node->contents < 0)
+		{
+			if (ent->num_leafs < MAX_ENT_LEAFS)
+			{
+				mleaf_t *leaf = (mleaf_t *)node;
+				int leafnum = leaf - sv.worldmodel->leafs - 1;
+				ent->leafnums[ent->num_leafs] = leafnum;
+				ent->num_leafs++;
+			}
+			else
+			{
+				ent->num_leafs = MAX_ENT_LEAFS + 1;
+			}
+			return;
+		}
+
+		splitplane = node->plane;
+		if (splitplane->type >= 3)
+		{
+			sides = BoxOnPlaneSide(ent->v.absmin, ent->v.absmax, splitplane);
+
+			if (sides == 3)
+			{
+				if (*topnode == -1)
+					*topnode = node - sv.worldmodel->nodes;
+			}
+
+			if (sides & 1)
+				SV_FindTouchedLeafs(ent, node->children[0], topnode);
+
+			if (sides & 2)
+				SV_FindTouchedLeafs(ent, node->children[1], topnode);
+		}
+		else
+		{
+			if (splitplane->dist > ent->v.absmin[splitplane->type])
+			{
+				if (splitplane->dist < ent->v.absmax[splitplane->type])
+				{
+					// sides = 3;
+					// do both children nodes
+					if (*topnode == -1)
+						*topnode = node - sv.worldmodel->nodes;
+
+					SV_FindTouchedLeafs(ent, node->children[0], topnode);
+					node = node->children[1];
+					continue;
+				}
+				else
+				{
+					// sides = 2;
+					// do only SV_FindTouchedLeafs(ent, node->children[1], topnode);
+					node = node->children[1];
+					continue;
+				}
+			}
+			else
+			{
+				// sides = 1;
+				// do only SV_FindTouchedLeafs(ent, node->children[0], topnode);
+				node = node->children[0];
+				continue;
+			}
+		}
+
+		break;
+	}
+}
+#endif // REHLDS_OPT_PEDANTIC
 
 /*
 ===============
@@ -360,108 +616,79 @@ SV_LinkEdict
 
 ===============
 */
-void SV_LinkEdict (edict_t *ent, qboolean touch_triggers)
+void SV_LinkEdict(edict_t *ent, qboolean touch_triggers)
 {
-	areanode_t	*node;
+	static int iTouchLinkSemaphore = 0;
+	areanode_t *node;
+	int topnode;
 
 	if (ent->area.prev)
-		SV_UnlinkEdict (ent);	// unlink from old position
-		
-	if (ent == sv.edicts)
-		return;		// don't add the world
+		SV_UnlinkEdict(ent);
 
-	if (ent->free)
+	if (ent == &sv.edicts[0] || ent->free)
 		return;
 
-// set the abs box
-
-#ifdef QUAKE2
-	if (ent->v.solid == SOLID_BSP && 
-	(ent->v.angles[0] || ent->v.angles[1] || ent->v.angles[2]) )
-	{	// expand for rotation
-		float		max, v;
-		int			i;
-
-		max = 0;
-		for (i=0 ; i<3 ; i++)
-		{
-			v =fabs( ent->v.mins[i]);
-			if (v > max)
-				max = v;
-			v =fabs( ent->v.maxs[i]);
-			if (v > max)
-				max = v;
-		}
-		for (i=0 ; i<3 ; i++)
-		{
-			ent->v.absmin[i] = ent->v.origin[i] - max;
-			ent->v.absmax[i] = ent->v.origin[i] + max;
-		}
+	gEntityInterface.pfnSetAbsBox(ent);
+	if (ent->v.movetype == MOVETYPE_FOLLOW && ent->v.aiment)
+	{
+		ent->headnode = ent->v.aiment->headnode;
+		ent->num_leafs = ent->v.aiment->num_leafs;
+		Q_memcpy(ent->leafnums, ent->v.aiment->leafnums, sizeof(ent->leafnums));
 	}
 	else
-#endif
 	{
-		VectorAdd (ent->v.origin, ent->v.mins, ent->v.absmin);	
-		VectorAdd (ent->v.origin, ent->v.maxs, ent->v.absmax);
+		ent->num_leafs = 0;
+		ent->headnode = -1;
+		topnode = -1;
+		if (ent->v.modelindex)
+			SV_FindTouchedLeafs(ent, sv.worldmodel->nodes, &topnode);
+
+		if (ent->num_leafs > MAX_ENT_LEAFS)
+		{
+			ent->num_leafs = 0;
+			ent->headnode = (int)topnode;
+			Q_memset(ent->leafnums, -1, sizeof(ent->leafnums));
+		}
 	}
 
-//
-// to make items easier to pick up and allow them to be grabbed off
-// of shelves, the abs sizes are expanded
-//
-	if ((int)ent->v.flags & FL_ITEM)
-	{
-		ent->v.absmin[0] -= 15;
-		ent->v.absmin[1] -= 15;
-		ent->v.absmax[0] += 15;
-		ent->v.absmax[1] += 15;
-	}
-	else
-	{	// because movement is clipped an epsilon away from an actual edge,
-		// we must fully check even when bounding boxes don't quite touch
-		ent->v.absmin[0] -= 1;
-		ent->v.absmin[1] -= 1;
-		ent->v.absmin[2] -= 1;
-		ent->v.absmax[0] += 1;
-		ent->v.absmax[1] += 1;
-		ent->v.absmax[2] += 1;
-	}
-	
-// link to PVS leafs
-	ent->num_leafs = 0;
-	if (ent->v.modelindex)
-		SV_FindTouchedLeafs (ent, sv.worldmodel->nodes);
-
-	if (ent->v.solid == SOLID_NOT)
+	if (ent->v.solid == SOLID_NOT && ent->v.skin >= -1)
 		return;
 
-// find the first node that the ent's box crosses
+	if (ent->v.solid == SOLID_BSP && !Mod_Handle(ent->v.modelindex) && Q_strlen(&pr_strings[ent->v.model]) <= 0)
+	{
+		Con_DPrintf("Inserted %s with no model\n", &pr_strings[ent->v.classname]);
+		return;
+	}
+
 	node = sv_areanodes;
-	while (1)
+	while (true)
 	{
 		if (node->axis == -1)
 			break;
-		if (ent->v.absmin[node->axis] > node->dist)
-			node = node->children[0];
-		else if (ent->v.absmax[node->axis] < node->dist)
+
+		if (ent->v.absmin[node->axis] <= node->dist)
+		{
+			if (ent->v.absmax[node->axis] >= node->dist)
+				break;
 			node = node->children[1];
+		}
 		else
-			break;		// crosses the node
+		{
+			node = node->children[0];
+		}
 	}
-	
-// link it in	
 
-	if (ent->v.solid == SOLID_TRIGGER)
-		InsertLinkBefore (&ent->area, &node->trigger_edicts);
-	else
-		InsertLinkBefore (&ent->area, &node->solid_edicts);
-	
-// if touch_triggers, touch all entities at this node and decend for more
+	InsertLinkBefore(&ent->area, (ent->v.solid == SOLID_TRIGGER) ? &node->trigger_edicts : &node->solid_edicts);
 	if (touch_triggers)
-		SV_TouchLinks ( ent, sv_areanodes );
+	{
+		if (!iTouchLinkSemaphore)
+		{
+			iTouchLinkSemaphore = 1;
+			SV_TouchLinks(ent, sv_areanodes);
+			iTouchLinkSemaphore = 0;
+		}
+	}
 }
-
-
 
 /*
 ===============================================================================
@@ -471,43 +698,118 @@ POINT TESTING IN HULLS
 ===============================================================================
 */
 
-#if	!id386
-
 /*
 ==================
 SV_HullPointContents
 
 ==================
 */
-int SV_HullPointContents (hull_t *hull, int num, vec3_t p)
+int SV_HullPointContents(hull_t *hull, int num, const vec_t *p)
 {
-	float		d;
-	dclipnode_t	*node;
-	mplane_t	*plane;
+	dclipnode_t *node;
+	mplane_t *plane;
+	float d;
 
-	while (num >= 0)
+	int i = num;
+	while (i >= 0)
 	{
-		if (num < hull->firstclipnode || num > hull->lastclipnode)
-			Sys_Error ("SV_HullPointContents: bad node number");
-	
-		node = hull->clipnodes + num;
-		plane = hull->planes + node->planenum;
-		
-		if (plane->type < 3)
+		if (hull->firstclipnode > i || hull->lastclipnode < i)
+			Sys_Error("%s: bad node number", __func__);
+		node = &hull->clipnodes[i];
+		plane = &hull->planes[node->planenum];
+		if (plane->type > 2)
+			d = _DotProduct(plane->normal, p) - plane->dist;
+		else
 			d = p[plane->type] - plane->dist;
-		else
-			d = DotProduct (plane->normal, p) - plane->dist;
-		if (d < 0)
-			num = node->children[1];
-		else
-			num = node->children[0];
+		i = node->children[(d >= 0.0f) ? 0 : 1];
 	}
-	
-	return num;
+
+	return i;
 }
 
-#endif	// !id386
+int SV_LinkContents(areanode_t *node, const vec_t *pos)
+{
+	link_t *l;
+	link_t *next;
+	edict_t *touch;
+	hull_t *hull;
+	vec3_t localPosition;
+	vec3_t offset;
 
+#ifdef REHLDS_OPT_PEDANTIC
+	// unroll tail recursion
+	while (true)
+#endif
+	{
+		for (l = node->solid_edicts.next; l != &node->solid_edicts; l = next)
+		{
+			next = l->next;
+			touch = (edict_t *)((char *)l - offsetof(edict_t, area));
+			if (!touch->v.solid)
+			{
+				if (touch->v.groupinfo)
+				{
+					if (g_groupop)
+					{
+						if (g_groupop == GROUP_OP_NAND && (touch->v.groupinfo & g_groupmask))
+							continue;
+					}
+					else
+					{
+						if (!(touch->v.groupinfo & g_groupmask))
+							continue;
+					}
+				}
+
+				if (Mod_GetType(touch->v.modelindex) == mod_brush
+					&& pos[0] <= (double)touch->v.absmax[0]
+					&& pos[1] <= (double)touch->v.absmax[1]
+					&& pos[2] <= (double)touch->v.absmax[2]
+					&& pos[0] >= (double)touch->v.absmin[0]
+					&& pos[1] >= (double)touch->v.absmin[1]
+					&& pos[2] >= (double)touch->v.absmin[2])
+				{
+					int contents = touch->v.skin;
+					if (contents < -100 || contents > 100)
+						Con_DPrintf("Invalid contents on trigger field: %s\n", &pr_strings[touch->v.classname]);
+					hull = SV_HullForBsp(touch, vec3_origin, vec3_origin, offset);
+					localPosition[0] = pos[0] - offset[0];
+					localPosition[1] = pos[1] - offset[1];
+					localPosition[2] = pos[2] - offset[2];
+					if (SV_HullPointContents(hull, hull->firstclipnode, localPosition) != -1)
+						return contents;
+				}
+			}
+		}
+
+		if (node->axis == -1)
+			return -1;
+
+#ifndef REHLDS_OPT_PEDANTIC
+		if (pos[node->axis] > node->dist)
+			return SV_LinkContents(node->children[0], pos);
+
+		if (pos[node->axis] < node->dist)
+			return SV_LinkContents(node->children[1], pos);
+#else // REHLDS_OPT_PEDANTIC
+		if (pos[node->axis] > node->dist)
+		{
+			node = node->children[0];
+			continue;
+		}
+
+		if (pos[node->axis] < node->dist)
+		{
+			node = node->children[1];
+			continue;
+		}
+
+		break;
+#endif // REHLDS_OPT_PEDANTIC
+	}
+
+	return -1;
+}
 
 /*
 ==================
@@ -515,19 +817,24 @@ SV_PointContents
 
 ==================
 */
-int SV_PointContents (vec3_t p)
+int SV_PointContents(const vec_t *p) // vec3_t p
 {
-	int		cont;
+	int cont;
+	int entityContents;
 
-	cont = SV_HullPointContents (&sv.worldmodel->hulls[0], 0, p);
+	cont = SV_HullPointContents(sv.worldmodel->hulls, 0, p);
 	if (cont <= CONTENTS_CURRENT_0 && cont >= CONTENTS_CURRENT_DOWN)
+	{
 		cont = CONTENTS_WATER;
-	return cont;
-}
+	}
+	else
+	{
+		if (cont == CONTENTS_SOLID)
+			return CONTENTS_SOLID;
+	}
 
-int SV_TruePointContents (vec3_t p)
-{
-	return SV_HullPointContents (&sv.worldmodel->hulls[0], 0, p);
+	entityContents = SV_LinkContents(&sv_areanodes[0], p);
+	return (entityContents != -1) ? entityContents : cont;
 }
 
 //===========================================================================
@@ -541,15 +848,19 @@ supplied entity.
 This could be a lot more efficient...
 ============
 */
-edict_t	*SV_TestEntityPosition (edict_t *ent)
+edict_t *SV_TestEntityPosition(edict_t *ent)
 {
-	trace_t	trace;
+	trace_t trace;
+	qboolean monsterClip;
 
-	trace = SV_Move (ent->v.origin, ent->v.mins, ent->v.maxs, ent->v.origin, 0, ent);
-	
+	monsterClip = (ent->v.flags & FL_MONSTERCLIP) ? TRUE : FALSE;
+	trace = SV_Move(ent->v.origin, ent->v.mins, ent->v.maxs, ent->v.origin, 0, ent, monsterClip);
 	if (trace.startsolid)
-		return sv.edicts;
-		
+	{
+		SV_SetGlobalTrace(&trace);
+		return trace.ent;
+	}
+
 	return NULL;
 }
 
@@ -561,147 +872,423 @@ LINE TESTING IN HULLS
 ===============================================================================
 */
 
-// 1/32 epsilon to keep floating point happy
-#define	DIST_EPSILON	(0.03125)
-
 /*
 ==================
 SV_RecursiveHullCheck
 
 ==================
 */
-qboolean SV_RecursiveHullCheck (hull_t *hull, int num, float p1f, float p2f, vec3_t p1, vec3_t p2, trace_t *trace)
+#ifndef REHLDS_OPT_PEDANTIC
+qboolean SV_RecursiveHullCheck(hull_t *hull, int num, float p1f, float p2f, const vec_t *p1, const vec_t *p2, trace_t *trace)
 {
-	dclipnode_t	*node;
-	mplane_t	*plane;
-	float		t1, t2;
-	float		frac;
-	int			i;
-	vec3_t		mid;
-	int			side;
-	float		midf;
+	dclipnode_t *node;
+	mplane_t *plane;
+	float t2;
+	vec3_t mid;
+	float frac;
+	float t1;
+	signed int side;
+	float midf;
+	float pdif = p2f - p1f;
 
-// check for empty
-	if (num < 0)
+	float DIST_EPSILON = 0.03125f;
+
+	if (num >= 0)
 	{
-		if (num != CONTENTS_SOLID)
+		if (num < hull->firstclipnode || num > hull->lastclipnode || !hull->planes)
+			Sys_Error("%s: bad node number", __func__);
+
+		node = &hull->clipnodes[num];
+		plane = &hull->planes[hull->clipnodes[num].planenum];
+		if (plane->type >= 3)
 		{
-			trace->allsolid = false;
-			if (num == CONTENTS_EMPTY)
-				trace->inopen = true;
-			else
-				trace->inwater = true;
+			t1 = _DotProduct(p1, plane->normal) - plane->dist;
+			t2 = _DotProduct(p2, plane->normal) - plane->dist;
 		}
 		else
-			trace->startsolid = true;
-		return true;		// empty
-	}
-
-	if (num < hull->firstclipnode || num > hull->lastclipnode)
-		Sys_Error ("SV_RecursiveHullCheck: bad node number");
-
-//
-// find the point distances
-//
-	node = hull->clipnodes + num;
-	plane = hull->planes + node->planenum;
-
-	if (plane->type < 3)
-	{
-		t1 = p1[plane->type] - plane->dist;
-		t2 = p2[plane->type] - plane->dist;
-	}
-	else
-	{
-		t1 = DotProduct (plane->normal, p1) - plane->dist;
-		t2 = DotProduct (plane->normal, p2) - plane->dist;
-	}
-	
-#if 1
-	if (t1 >= 0 && t2 >= 0)
-		return SV_RecursiveHullCheck (hull, node->children[0], p1f, p2f, p1, p2, trace);
-	if (t1 < 0 && t2 < 0)
-		return SV_RecursiveHullCheck (hull, node->children[1], p1f, p2f, p1, p2, trace);
-#else
-	if ( (t1 >= DIST_EPSILON && t2 >= DIST_EPSILON) || (t2 > t1 && t1 >= 0) )
-		return SV_RecursiveHullCheck (hull, node->children[0], p1f, p2f, p1, p2, trace);
-	if ( (t1 <= -DIST_EPSILON && t2 <= -DIST_EPSILON) || (t2 < t1 && t1 <= 0) )
-		return SV_RecursiveHullCheck (hull, node->children[1], p1f, p2f, p1, p2, trace);
-#endif
-
-// put the crosspoint DIST_EPSILON pixels on the near side
-	if (t1 < 0)
-		frac = (t1 + DIST_EPSILON)/(t1-t2);
-	else
-		frac = (t1 - DIST_EPSILON)/(t1-t2);
-	if (frac < 0)
-		frac = 0;
-	if (frac > 1)
-		frac = 1;
-		
-	midf = p1f + (p2f - p1f)*frac;
-	for (i=0 ; i<3 ; i++)
-		mid[i] = p1[i] + frac*(p2[i] - p1[i]);
-
-	side = (t1 < 0);
-
-// move up to the node
-	if (!SV_RecursiveHullCheck (hull, node->children[side], p1f, midf, p1, mid, trace) )
-		return false;
-
-#ifdef PARANOID
-	if (SV_HullPointContents (sv_hullmodel, mid, node->children[side])
-	== CONTENTS_SOLID)
-	{
-		Con_Printf ("mid PointInHullSolid\n");
-		return false;
-	}
-#endif
-	
-	if (SV_HullPointContents (hull, node->children[side^1], mid)
-	!= CONTENTS_SOLID)
-// go past the node
-		return SV_RecursiveHullCheck (hull, node->children[side^1], midf, p2f, mid, p2, trace);
-	
-	if (trace->allsolid)
-		return false;		// never got out of the solid area
-		
-//==================
-// the other side of the node is solid, this is the impact point
-//==================
-	if (!side)
-	{
-		VectorCopy (plane->normal, trace->plane.normal);
-		trace->plane.dist = plane->dist;
-	}
-	else
-	{
-		VectorSubtract (vec3_origin, plane->normal, trace->plane.normal);
-		trace->plane.dist = -plane->dist;
-	}
-
-	while (SV_HullPointContents (hull, hull->firstclipnode, mid)
-	== CONTENTS_SOLID)
-	{ // shouldn't really happen, but does occasionally
-		frac -= 0.1;
-		if (frac < 0)
 		{
-			trace->fraction = midf;
-			VectorCopy (mid, trace->endpos);
-			Con_DPrintf ("backup past 0\n");
-			return false;
+			t1 = p1[plane->type] - plane->dist;
+			t2 = p2[plane->type] - plane->dist;
 		}
-		midf = p1f + (p2f - p1f)*frac;
-		for (i=0 ; i<3 ; i++)
-			mid[i] = p1[i] + frac*(p2[i] - p1[i]);
+		if (t1 >= 0.0f && t2 >= 0.0f)
+			return SV_RecursiveHullCheck(hull, node->children[0], p1f, p2f, p1, p2, trace);
+
+		if (t1 >= 0.0f)
+		{
+			midf = t1 - DIST_EPSILON;
+		}
+		else
+		{
+			if (t2 < 0.0f)
+				return SV_RecursiveHullCheck(hull, node->children[1], p1f, p2f, p1, p2, trace);
+
+			midf = t1 + DIST_EPSILON;
+		}
+
+		midf = midf / (t1 - t2);
+		if (midf >= 0.0f)
+		{
+			if (midf > 1.0f)
+				midf = 1.0f;
+		}
+		else
+		{
+			midf = 0.0f;
+		}
+		if (!IS_NAN(midf)) // not a number
+		{
+			frac = pdif * midf + p1f;
+			mid[0] = (p2[0] - p1[0]) * midf + p1[0];
+			mid[1] = (p2[1] - p1[1]) * midf + p1[1];
+			mid[2] = (p2[2] - p1[2]) * midf + p1[2];
+			side = (t1 < 0.0f) ? 1 : 0;
+			if (SV_RecursiveHullCheck(hull, node->children[side], p1f, frac, p1, mid, trace))
+			{
+				if (SV_HullPointContents(hull, node->children[side ^ 1], mid) != CONTENTS_SOLID)
+					return SV_RecursiveHullCheck(hull, node->children[side ^ 1], frac, p2f, mid, p2, trace);
+
+				if (!trace->allsolid)
+				{
+					if (side)
+					{
+						trace->plane.normal[0] = vec3_origin[0] - plane->normal[0];
+						trace->plane.normal[1] = vec3_origin[1] - plane->normal[1];
+						trace->plane.normal[2] = vec3_origin[2] - plane->normal[2];
+						trace->plane.dist = -plane->dist;
+					}
+					else
+					{
+						trace->plane.normal[0] = plane->normal[0];
+						trace->plane.normal[1] = plane->normal[1];
+						trace->plane.normal[2] = plane->normal[2];
+						trace->plane.dist = plane->dist;
+					}
+
+					while (1)
+					{
+						if (SV_HullPointContents(hull, hull->firstclipnode, mid) != CONTENTS_SOLID)
+						{
+							trace->fraction = frac;
+							trace->endpos[0] = mid[0];
+							trace->endpos[1] = mid[1];
+							trace->endpos[2] = mid[2];
+							return FALSE;
+						}
+						midf -= 0.1f;
+						if (midf < 0.0f)
+							break;
+						frac = pdif * midf + p1f;
+						mid[0] = (p2[0] - p1[0]) * midf + p1[0];
+						mid[1] = (p2[1] - p1[1]) * midf + p1[1];
+						mid[2] = (p2[2] - p1[2]) * midf + p1[2];
+					}
+					trace->fraction = frac;
+					trace->endpos[0] = mid[0];
+					trace->endpos[1] = mid[1];
+					trace->endpos[2] = mid[2];
+					Con_DPrintf("backup past 0\n");
+					return FALSE;
+				}
+			}
+		}
+		return FALSE;
 	}
 
-	trace->fraction = midf;
-	VectorCopy (mid, trace->endpos);
-
-	return false;
+	if (num == CONTENTS_SOLID)
+	{
+		trace->startsolid = TRUE;
+	}
+	else
+	{
+		trace->allsolid = FALSE;
+		if (num == CONTENTS_EMPTY)
+		{
+			trace->inopen = TRUE;
+			return TRUE;
+		}
+		if (num != CONTENTS_TRANSLUCENT)
+		{
+			trace->inwater = TRUE;
+			return TRUE;
+		}
+	}
+	return TRUE;
 }
+#else // REHLDS_OPT_PEDANTIC
+// version with unrolled tail recursion
+qboolean SV_RecursiveHullCheck(hull_t *hull, int num, float p1f, float p2f, const vec_t *p1, const vec_t *p2, trace_t *trace)
+{
+	dclipnode_t *node;
+	mplane_t *plane;
+	float t2;
+	vec3_t mid;
+	float frac;
+	float t1;
+	signed int side;
+	float midf;
+	float pdif;
+	vec3_t custom_p1; // for holding custom p1 value
 
+	float DIST_EPSILON = 0.03125f;
+
+	while (num >= 0)
+	{
+		pdif = p2f - p1f;
+
+		if (num < hull->firstclipnode || num > hull->lastclipnode || !hull->planes)
+			Sys_Error("%s: bad node number", __func__);
+
+		node = &hull->clipnodes[num];
+		plane = &hull->planes[hull->clipnodes[num].planenum];
+		if (plane->type >= 3)
+		{
+			t1 = _DotProduct(p1, plane->normal) - plane->dist;
+			t2 = _DotProduct(p2, plane->normal) - plane->dist;
+		}
+		else
+		{
+			t1 = p1[plane->type] - plane->dist;
+			t2 = p2[plane->type] - plane->dist;
+		}
+		if (t1 >= 0.0f && t2 >= 0.0f)
+		{
+			num = node->children[0];
+			continue;
+		}
+
+		if (t1 >= 0.0f)
+		{
+			midf = t1 - DIST_EPSILON;
+		}
+		else
+		{
+			if (t2 < 0.0f)
+			{
+				num = node->children[1];
+				continue;
+			}
+
+			midf = t1 + DIST_EPSILON;
+		}
+
+		midf = midf / (t1 - t2);
+		if (midf >= 0.0f)
+		{
+			if (midf > 1.0f)
+				midf = 1.0f;
+		}
+		else
+		{
+			midf = 0.0f;
+		}
+		if (!IS_NAN(midf)) // not a number
+		{
+			frac = pdif * midf + p1f;
+			mid[0] = (p2[0] - p1[0]) * midf + p1[0];
+			mid[1] = (p2[1] - p1[1]) * midf + p1[1];
+			mid[2] = (p2[2] - p1[2]) * midf + p1[2];
+			side = (t1 < 0.0f) ? 1 : 0;
+			if (SV_RecursiveHullCheck(hull, node->children[side], p1f, frac, p1, mid, trace))
+			{
+				if (SV_HullPointContents(hull, node->children[side ^ 1], mid) != CONTENTS_SOLID)
+				{
+					num = node->children[side ^ 1];
+					p1f = frac;
+					p1 = custom_p1;
+					custom_p1[0] = mid[0];
+					custom_p1[1] = mid[1];
+					custom_p1[2] = mid[2];
+					continue;
+				}
+
+				if (!trace->allsolid)
+				{
+					if (side)
+					{
+						trace->plane.normal[0] = vec3_origin[0] - plane->normal[0];
+						trace->plane.normal[1] = vec3_origin[1] - plane->normal[1];
+						trace->plane.normal[2] = vec3_origin[2] - plane->normal[2];
+						trace->plane.dist = -plane->dist;
+					}
+					else
+					{
+						trace->plane.normal[0] = plane->normal[0];
+						trace->plane.normal[1] = plane->normal[1];
+						trace->plane.normal[2] = plane->normal[2];
+						trace->plane.dist = plane->dist;
+					}
+
+					while (1)
+					{
+						if (SV_HullPointContents(hull, hull->firstclipnode, mid) != CONTENTS_SOLID)
+						{
+							trace->fraction = frac;
+							trace->endpos[0] = mid[0];
+							trace->endpos[1] = mid[1];
+							trace->endpos[2] = mid[2];
+							return FALSE;
+						}
+						midf -= 0.1f;
+						if (midf < 0.0f)
+							break;
+						frac = pdif * midf + p1f;
+						mid[0] = (p2[0] - p1[0]) * midf + p1[0];
+						mid[1] = (p2[1] - p1[1]) * midf + p1[1];
+						mid[2] = (p2[2] - p1[2]) * midf + p1[2];
+					}
+					trace->fraction = frac;
+					trace->endpos[0] = mid[0];
+					trace->endpos[1] = mid[1];
+					trace->endpos[2] = mid[2];
+					Con_DPrintf("backup past 0\n");
+					return FALSE;
+				}
+			}
+		}
+		return FALSE;
+	}
+
+	if (num == CONTENTS_SOLID)
+	{
+		trace->startsolid = TRUE;
+	}
+	else
+	{
+		trace->allsolid = FALSE;
+		if (num == CONTENTS_EMPTY)
+		{
+			trace->inopen = TRUE;
+			return TRUE;
+		}
+		if (num != CONTENTS_TRANSLUCENT)
+		{
+			trace->inwater = TRUE;
+			return TRUE;
+		}
+	}
+	return TRUE;
+}
+#endif // REHLDS_OPT_PEDANTIC
+
+void SV_SingleClipMoveToEntity(edict_t *ent, const vec_t *start, const vec_t *mins, const vec_t *maxs, const vec_t *end, trace_t *trace)
+{
+	hull_t *hull;
+	trace_t testtrace;
+	vec3_t offset;
+	int rotated;
+	int closest;
+	vec3_t end_l;
+	vec3_t start_l;
+	int numhulls;
+
+	Q_memset(trace, 0, sizeof(trace_t));
+	trace->fraction = 1.0f;
+	trace->allsolid = TRUE;
+	trace->endpos[0] = end[0];
+	trace->endpos[1] = end[1];
+	trace->endpos[2] = end[2];
+
+#ifdef REHLDS_FIXES
+	if (Mod_GetType(ent->v.modelindex) == mod_studio)
+#else
+	if (sv.models[ent->v.modelindex]->type == mod_studio)
+#endif // REHLDS_FIXES
+	{
+		hull = SV_HullForStudioModel(ent, mins, maxs, offset, &numhulls);
+	}
+	else
+	{
+		hull = SV_HullForEntity(ent, mins, maxs, offset);
+		numhulls = 1;
+	}
+	start_l[0] = start[0] - offset[0];
+	start_l[1] = start[1] - offset[1];
+	start_l[2] = start[2] - offset[2];
+	end_l[0] = end[0] - offset[0];
+	end_l[1] = end[1] - offset[1];
+	end_l[2] = end[2] - offset[2];
+	if (ent->v.solid == SOLID_BSP && (ent->v.angles[0] != 0.0f || ent->v.angles[1] != 0.0f || ent->v.angles[2] != 0.0f))
+	{
+		vec3_t right;
+		vec3_t forward;
+		vec3_t up;
+		vec3_t temp;
+
+		AngleVectors(ent->v.angles, forward, right, up);
+
+		temp[0] = start_l[0]; temp[1] = start_l[1]; temp[2] = start_l[2];
+		start_l[0] = _DotProduct(forward, temp);
+		start_l[1] = -_DotProduct(right, temp);
+		start_l[2] = _DotProduct(up, temp);
+
+		temp[0] = end_l[0]; temp[1] = end_l[1]; temp[2] = end_l[2];
+		end_l[0] = _DotProduct(forward, temp);
+		end_l[1] = -_DotProduct(right, temp);
+		end_l[2] = _DotProduct(up, temp);
+
+		rotated = 1;
+	}
+	else
+	{
+		rotated = 0;
+	}
+
+	if (numhulls == 1)
+	{
+		SV_RecursiveHullCheck(hull, hull->firstclipnode, 0.0f, 1.0f, start_l, end_l, trace);
+	}
+	else
+	{
+		closest = 0;
+		for (int i = 0; i < numhulls; i++)
+		{
+			Q_memset(&testtrace, 0, sizeof(trace_t));
+			testtrace.endpos[0] = end[0];
+			testtrace.endpos[1] = end[1];
+			testtrace.endpos[2] = end[2];
+			testtrace.fraction = 1.0f;
+			testtrace.allsolid = TRUE;
+			SV_RecursiveHullCheck(&hull[i], hull[i].firstclipnode, 0.0f, 1.0f, start_l, end_l, &testtrace);
+			if (i == 0 || testtrace.allsolid || testtrace.startsolid || testtrace.fraction < trace->fraction)
+			{
+				int isSolid = trace->startsolid;
+				Q_memcpy(trace, &testtrace, sizeof(trace_t));
+				if (isSolid)
+					trace->startsolid = TRUE;
+				closest = i;
+			}
+		}
+
+		trace->hitgroup = SV_HitgroupForStudioHull(closest);
+	}
+
+	if (trace->fraction != 1.0f)
+	{
+		if (rotated)
+		{
+			vec3_t right;
+			vec3_t up;
+			vec3_t forward;
+			vec3_t temp;
+
+			AngleVectorsTranspose(ent->v.angles, forward, right, up);
+			temp[0] = trace->plane.normal[0];
+			temp[1] = trace->plane.normal[1];
+			temp[2] = trace->plane.normal[2];
+
+			trace->plane.normal[0] = _DotProduct(forward, temp);
+			trace->plane.normal[1] = _DotProduct(right, temp);
+			trace->plane.normal[2] = _DotProduct(up, temp);
+		}
+
+		trace->endpos[0] = (end[0] - start[0]) * trace->fraction + start[0];
+		trace->endpos[1] = (end[1] - start[1]) * trace->fraction + start[1];
+		trace->endpos[2] = (end[2] - start[2]) * trace->fraction + start[2];
+	}
+
+	if (trace->fraction < 1.0f || trace->startsolid)
+		trace->ent = ent;
+}
 
 /*
 ==================
@@ -711,87 +1298,12 @@ Handles selection or creation of a clipping hull, and offseting (and
 eventually rotation) of the end points
 ==================
 */
-trace_t SV_ClipMoveToEntity (edict_t *ent, vec3_t start, vec3_t mins, vec3_t maxs, vec3_t end)
+trace_t SV_ClipMoveToEntity(edict_t *ent, const vec_t *start, const vec_t *mins, const vec_t *maxs, const vec_t *end)
 {
-	trace_t		trace;
-	vec3_t		offset;
-	vec3_t		start_l, end_l;
-	hull_t		*hull;
+	trace_t goodtrace;
+	SV_SingleClipMoveToEntity(ent, start, mins, maxs, end, &goodtrace);
 
-// fill in a default trace
-	memset (&trace, 0, sizeof(trace_t));
-	trace.fraction = 1;
-	trace.allsolid = true;
-	VectorCopy (end, trace.endpos);
-
-// get the clipping hull
-	hull = SV_HullForEntity (ent, mins, maxs, offset);
-
-	VectorSubtract (start, offset, start_l);
-	VectorSubtract (end, offset, end_l);
-
-#ifdef QUAKE2
-	// rotate start and end into the models frame of reference
-	if (ent->v.solid == SOLID_BSP && 
-	(ent->v.angles[0] || ent->v.angles[1] || ent->v.angles[2]) )
-	{
-		vec3_t	a;
-		vec3_t	forward, right, up;
-		vec3_t	temp;
-
-		AngleVectors (ent->v.angles, forward, right, up);
-
-		VectorCopy (start_l, temp);
-		start_l[0] = DotProduct (temp, forward);
-		start_l[1] = -DotProduct (temp, right);
-		start_l[2] = DotProduct (temp, up);
-
-		VectorCopy (end_l, temp);
-		end_l[0] = DotProduct (temp, forward);
-		end_l[1] = -DotProduct (temp, right);
-		end_l[2] = DotProduct (temp, up);
-	}
-#endif
-
-// trace a line through the apropriate clipping hull
-	SV_RecursiveHullCheck (hull, hull->firstclipnode, 0, 1, start_l, end_l, &trace);
-
-#ifdef QUAKE2
-	// rotate endpos back to world frame of reference
-	if (ent->v.solid == SOLID_BSP && 
-	(ent->v.angles[0] || ent->v.angles[1] || ent->v.angles[2]) )
-	{
-		vec3_t	a;
-		vec3_t	forward, right, up;
-		vec3_t	temp;
-
-		if (trace.fraction != 1)
-		{
-			VectorSubtract (vec3_origin, ent->v.angles, a);
-			AngleVectors (a, forward, right, up);
-
-			VectorCopy (trace.endpos, temp);
-			trace.endpos[0] = DotProduct (temp, forward);
-			trace.endpos[1] = -DotProduct (temp, right);
-			trace.endpos[2] = DotProduct (temp, up);
-
-			VectorCopy (trace.plane.normal, temp);
-			trace.plane.normal[0] = DotProduct (temp, forward);
-			trace.plane.normal[1] = -DotProduct (temp, right);
-			trace.plane.normal[2] = DotProduct (temp, up);
-		}
-	}
-#endif
-
-// fix trace up by the offset
-	if (trace.fraction != 1)
-		VectorAdd (trace.endpos, offset, trace.endpos);
-
-// did we clip the move?
-	if (trace.fraction < 1 || trace.startsolid  )
-		trace.ent = ent;
-
-	return trace;
+	return goodtrace;
 }
 
 //===========================================================================
@@ -803,108 +1315,216 @@ SV_ClipToLinks
 Mins and maxs enclose the entire area swept by the move
 ====================
 */
-void SV_ClipToLinks ( areanode_t *node, moveclip_t *clip )
+void SV_ClipToLinks(areanode_t *node, moveclip_t *clip)
 {
-	link_t		*l, *next;
-	edict_t		*touch;
-	trace_t		trace;
+	link_t *l;
+	link_t *next;
 
-// touch linked edicts
-	for (l = node->solid_edicts.next ; l != &node->solid_edicts ; l = next)
+	for (l = node->solid_edicts.next; l != &node->solid_edicts; l = next)
 	{
 		next = l->next;
-		touch = EDICT_FROM_AREA(l);
-		if (touch->v.solid == SOLID_NOT)
-			continue;
-		if (touch == clip->passedict)
-			continue;
-		if (touch->v.solid == SOLID_TRIGGER)
-			Sys_Error ("Trigger in clipping list");
-
-		if (clip->type == MOVE_NOMONSTERS && touch->v.solid != SOLID_BSP)
-			continue;
-
-		if (clip->boxmins[0] > touch->v.absmax[0]
-		|| clip->boxmins[1] > touch->v.absmax[1]
-		|| clip->boxmins[2] > touch->v.absmax[2]
-		|| clip->boxmaxs[0] < touch->v.absmin[0]
-		|| clip->boxmaxs[1] < touch->v.absmin[1]
-		|| clip->boxmaxs[2] < touch->v.absmin[2] )
-			continue;
-
-		if (clip->passedict && clip->passedict->v.size[0] && !touch->v.size[0])
-			continue;	// points never interact
-
-	// might intersect, so do an exact clip
-		if (clip->trace.allsolid)
-			return;
-		if (clip->passedict)
+		edict_t *touch = (edict_t *)((char *)l - offsetof(edict_t, area));
+		if (touch->v.groupinfo && clip->passedict && clip->passedict->v.groupinfo)
 		{
-		 	if (PROG_TO_EDICT(touch->v.owner) == clip->passedict)
-				continue;	// don't clip against own missiles
-			if (PROG_TO_EDICT(clip->passedict->v.owner) == touch)
-				continue;	// don't clip against owner
-		}
-
-		if ((int)touch->v.flags & FL_MONSTER)
-			trace = SV_ClipMoveToEntity (touch, clip->start, clip->mins2, clip->maxs2, clip->end);
-		else
-			trace = SV_ClipMoveToEntity (touch, clip->start, clip->mins, clip->maxs, clip->end);
-		if (trace.allsolid || trace.startsolid ||
-		trace.fraction < clip->trace.fraction)
-		{
-			trace.ent = touch;
-		 	if (clip->trace.startsolid)
+			if (g_groupop)
 			{
-				clip->trace = trace;
-				clip->trace.startsolid = true;
+				if (g_groupop == GROUP_OP_NAND && (clip->passedict->v.groupinfo & touch->v.groupinfo))
+					continue;
 			}
 			else
-				clip->trace = trace;
+			{
+				if (!(clip->passedict->v.groupinfo & touch->v.groupinfo))
+					continue;
+			}
 		}
-		else if (trace.startsolid)
-			clip->trace.startsolid = true;
-	}
-	
-// recurse down both sides
-	if (node->axis == -1)
-		return;
 
-	if ( clip->boxmaxs[node->axis] > node->dist )
-		SV_ClipToLinks ( node->children[0], clip );
-	if ( clip->boxmins[node->axis] < node->dist )
-		SV_ClipToLinks ( node->children[1], clip );
+		if (touch->v.solid == SOLID_NOT)
+			continue;
+
+		if (touch == clip->passedict)
+			continue;
+
+		if (touch->v.solid == SOLID_TRIGGER)
+			Sys_Error("%s: Trigger in clipping list", __func__);
+
+		if (gNewDLLFunctions.pfnShouldCollide && !gNewDLLFunctions.pfnShouldCollide(touch, clip->passedict))
+#ifdef REHLDS_FIXES
+			// https://github.com/dreamstalker/rehlds/issues/46
+			continue;
+#else
+			return;
+#endif
+
+		if (touch->v.solid == SOLID_BSP)
+		{
+			if ((touch->v.flags & FL_MONSTERCLIP) && !clip->monsterClipBrush)
+				continue;
+		}
+		else
+		{
+			if (clip->type == 1 && touch->v.movetype != MOVETYPE_PUSHSTEP)
+				continue;
+		}
+
+		if ((!clip->ignoretrans || !touch->v.rendermode || (touch->v.flags & FL_WORLDBRUSH))
+			&& clip->boxmins[0] <= touch->v.absmax[0]
+			&& clip->boxmins[1] <= touch->v.absmax[1]
+			&& clip->boxmins[2] <= touch->v.absmax[2]
+			&& clip->boxmaxs[0] >= touch->v.absmin[0]
+			&& clip->boxmaxs[1] >= touch->v.absmin[1]
+			&& clip->boxmaxs[2] >= touch->v.absmin[2]
+#ifdef REHLDS_FIXES
+			&& ((touch->v.solid == SOLID_SLIDEBOX && sv_force_ent_intersection.string[0] == '0')
+#else // REHLDS_FIXES
+			&& (touch->v.solid == SOLID_SLIDEBOX
+#endif // REHLDS_FIXES
+				|| SV_CheckSphereIntersection(touch, clip->start, clip->end))
+			&& (!clip->passedict || clip->passedict->v.size[0] == 0.0f || touch->v.size[0] != 0.0f))
+		{
+			if (clip->trace.allsolid)
+				return;
+
+			if (clip->passedict && (touch->v.owner == clip->passedict || clip->passedict->v.owner == touch))
+				continue;
+
+			trace_t trace;
+			if (touch->v.flags & FL_MONSTER)
+				trace = SV_ClipMoveToEntity(touch, clip->start, clip->mins2, clip->maxs2, clip->end);
+			else
+				trace = SV_ClipMoveToEntity(touch, clip->start, clip->mins, clip->maxs, clip->end);
+
+			if (trace.allsolid || trace.startsolid || trace.fraction < clip->trace.fraction)
+			{
+				qboolean oldStartSolid = clip->trace.startsolid;
+				trace.ent = touch;
+				clip->trace = trace;
+				if (oldStartSolid)
+					clip->trace.startsolid = TRUE;
+			}
+		}
+	}
+
+	if (node->axis != -1)
+	{
+		if (clip->boxmaxs[node->axis] > node->dist)
+			SV_ClipToLinks(node->children[0], clip);
+
+		if (node->dist > clip->boxmins[node->axis])
+			SV_ClipToLinks(node->children[1], clip);
+	}
 }
 
+void SV_ClipToWorldbrush(areanode_t *node, moveclip_t *clip)
+{
+	link_t *l;
+	link_t *next;
+
+	for (l = node->solid_edicts.next; l != &node->solid_edicts; l = next)
+	{
+		next = l->next;
+		edict_t *touch = (edict_t *)((char *)l - offsetof(edict_t, area));
+
+		if (touch->v.solid != SOLID_BSP)
+			continue;
+
+		if (!(touch->v.flags & FL_WORLDBRUSH))
+			continue;
+
+		if (clip->boxmins[0] <= touch->v.absmax[0]
+			&& clip->boxmins[1] <= touch->v.absmax[1]
+			&& clip->boxmins[2] <= touch->v.absmax[2]
+			&& clip->boxmaxs[0] >= touch->v.absmin[0]
+			&& clip->boxmaxs[1] >= touch->v.absmin[1]
+			&& clip->boxmaxs[2] >= touch->v.absmin[2])
+		{
+			if (clip->trace.allsolid)
+				return;
+
+			trace_t trace = SV_ClipMoveToEntity(touch, clip->start, clip->mins, clip->maxs, clip->end);
+			if (trace.allsolid || trace.startsolid || trace.fraction < clip->trace.fraction)
+			{
+				int oldSolid = clip->trace.startsolid;
+				trace.ent = touch;
+				clip->trace = trace;
+				if (oldSolid)
+					clip->trace.startsolid = TRUE;
+			}
+		}
+	}
+
+	if (node->axis != -1)
+	{
+		if (clip->boxmaxs[node->axis] > node->dist)
+			SV_ClipToWorldbrush(node->children[0], clip);
+
+		if (node->dist > clip->boxmins[node->axis])
+			SV_ClipToWorldbrush(node->children[1], clip);
+	}
+}
 
 /*
 ==================
 SV_MoveBounds
 ==================
 */
-void SV_MoveBounds (vec3_t start, vec3_t mins, vec3_t maxs, vec3_t end, vec3_t boxmins, vec3_t boxmaxs)
+void SV_MoveBounds(const vec_t *start, const vec_t *mins, const vec_t *maxs, const vec_t *end, vec_t *boxmins, vec_t *boxmaxs)
 {
-#if 0
-// debug to test against everything
-boxmins[0] = boxmins[1] = boxmins[2] = -9999;
-boxmaxs[0] = boxmaxs[1] = boxmaxs[2] = 9999;
-#else
-	int		i;
-	
-	for (i=0 ; i<3 ; i++)
+	for (int i = 0; i < 3; i++)
 	{
 		if (end[i] > start[i])
 		{
-			boxmins[i] = start[i] + mins[i] - 1;
-			boxmaxs[i] = end[i] + maxs[i] + 1;
+			boxmins[i] = start[i] + mins[i] - 1.0f;
+			boxmaxs[i] = end[i] + maxs[i] + 1.0f;
 		}
 		else
 		{
-			boxmins[i] = end[i] + mins[i] - 1;
-			boxmaxs[i] = start[i] + maxs[i] + 1;
+			boxmins[i] = end[i] + mins[i] - 1.0f;
+			boxmaxs[i] = start[i] + maxs[i] + 1.0f;
 		}
 	}
-#endif
+}
+
+trace_t SV_MoveNoEnts(const vec_t *start, vec_t *mins, vec_t *maxs, const vec_t *end, int type, edict_t *passedict)
+{
+	moveclip_t clip;
+	vec3_t worldEndPoint;
+	float worldFraction;
+
+	Q_memset(&clip, 0, sizeof(clip));
+	clip.trace = SV_ClipMoveToEntity(sv.edicts, start, mins, maxs, end);
+	if (clip.trace.fraction != 0.0f)
+	{
+		worldEndPoint[0] = clip.trace.endpos[0];
+		worldEndPoint[2] = clip.trace.endpos[2];
+		worldEndPoint[1] = clip.trace.endpos[1];
+		clip.end = worldEndPoint;
+
+		clip.ignoretrans = type >> 8;
+		worldFraction = clip.trace.fraction;
+		clip.type = type;
+		clip.passedict = passedict;
+
+		clip.mins2[0] = mins[0];
+		clip.mins2[1] = mins[1];
+		clip.mins2[2] = mins[2];
+		clip.maxs2[0] = maxs[0];
+		clip.maxs2[1] = maxs[1];
+		clip.maxs2[2] = maxs[2];
+
+		clip.trace.fraction = 1.0f;
+		clip.start = start;
+		clip.mins = mins;
+		clip.maxs = maxs;
+		clip.monsterClipBrush = FALSE;
+
+		SV_MoveBounds(start, clip.mins2, clip.maxs2, worldEndPoint, clip.boxmins, clip.boxmaxs);
+		SV_ClipToWorldbrush(sv_areanodes, &clip);
+
+		gGlobalVariables.trace_ent = clip.trace.ent;
+		clip.trace.fraction = worldFraction * clip.trace.fraction;
+	}
+
+	return clip.trace;
 }
 
 /*
@@ -912,103 +1532,149 @@ boxmaxs[0] = boxmaxs[1] = boxmaxs[2] = 9999;
 SV_Move
 ==================
 */
-trace_t SV_Move (vec3_t start, vec3_t mins, vec3_t maxs, vec3_t end, int type, edict_t *passedict)
+trace_t SV_Move(const vec_t *start, const vec_t *mins, const vec_t *maxs, const vec_t *end, int type, edict_t *passedict, qboolean monsterClipBrush)
 {
-	moveclip_t	clip;
-	int			i;
+	moveclip_t clip;
+	vec3_t worldEndPoint;
+	float worldFraction;
 
-	memset ( &clip, 0, sizeof ( moveclip_t ) );
-
-// clip to world
-	clip.trace = SV_ClipMoveToEntity ( sv.edicts, start, mins, maxs, end );
-
-	clip.start = start;
-	clip.end = end;
-	clip.mins = mins;
-	clip.maxs = maxs;
-	clip.type = type;
-	clip.passedict = passedict;
-
-	if (type == MOVE_MISSILE)
+	Q_memset(&clip, 0, sizeof(clip));
+	clip.trace = SV_ClipMoveToEntity(sv.edicts, start, mins, maxs, end);
+	if (clip.trace.fraction != 0.0f)
 	{
-		for (i=0 ; i<3 ; i++)
+		worldEndPoint[0] = clip.trace.endpos[0];
+		worldEndPoint[1] = clip.trace.endpos[1];
+		worldEndPoint[2] = clip.trace.endpos[2];
+		clip.end = worldEndPoint;
+		worldFraction = clip.trace.fraction;
+
+		clip.type = type & 0xFF;
+		clip.ignoretrans = type >> 8;
+		clip.trace.fraction = 1.0f;
+		clip.start = start;
+		clip.mins = mins;
+		clip.maxs = maxs;
+		clip.passedict = passedict;
+		clip.monsterClipBrush = monsterClipBrush;
+		if (type == 2)
 		{
-			clip.mins2[i] = -15;
-			clip.maxs2[i] = 15;
+			for (int i = 0; i < 3; i++)
+			{
+				clip.mins2[i] = -15.0f;
+				clip.maxs2[i] = +15.0f;
+			}
 		}
+		else
+		{
+			clip.mins2[0] = mins[0];
+			clip.mins2[1] = mins[1];
+			clip.mins2[2] = mins[2];
+			clip.maxs2[0] = maxs[0];
+			clip.maxs2[1] = maxs[1];
+			clip.maxs2[2] = maxs[2];
+		}
+		SV_MoveBounds(start, clip.mins2, clip.maxs2, worldEndPoint, clip.boxmins, clip.boxmaxs);
+		SV_ClipToLinks(sv_areanodes, &clip);
+		gGlobalVariables.trace_ent = clip.trace.ent;
+		clip.trace.fraction = worldFraction * clip.trace.fraction;
 	}
-	else
-	{
-		VectorCopy (mins, clip.mins2);
-		VectorCopy (maxs, clip.maxs2);
-	}
-	
-// create the bounding box of the entire move
-	SV_MoveBounds ( start, clip.mins2, clip.maxs2, end, clip.boxmins, clip.boxmaxs );
-
-// clip to entities
-	SV_ClipToLinks ( sv_areanodes, &clip );
 
 	return clip.trace;
 }
 
-//=============================================================================
-
-/*
-============
-SV_TestPlayerPosition
-
-============
-*/
-edict_t	*SV_TestPlayerPosition (edict_t *ent, vec3_t origin)
+#ifdef REHLDS_OPT_PEDANTIC
+// Optimized version of SV_Move routines for moving point hull throw world
+void SV_SingleClipMoveToPoint(const vec_t *start, const vec_t *end, trace_t *trace)
 {
-	hull_t	*hull;
-	edict_t	*check;
-	vec3_t	boxmins, boxmaxs;
-	vec3_t	offset;
-	int		e;
-	
-// check world first
-	hull = &sv.worldmodel->hulls[1];
-	if ( SV_HullPointContents (hull, hull->firstclipnode, origin) != CONTENTS_EMPTY )
-		return sv.edicts;
+	hull_t *hull;
 
-// check all entities
-	VectorAdd (origin, ent->v.mins, boxmins);
-	VectorAdd (origin, ent->v.maxs, boxmaxs);
-	
-	check = NEXT_EDICT(sv.edicts);
-	for (e=1 ; e<sv.num_edicts ; e++, check = NEXT_EDICT(check))
+	Q_memset(trace, 0, sizeof(trace_t));
+	trace->fraction = 1.0f;
+	trace->allsolid = TRUE;
+	trace->endpos[0] = end[0];
+	trace->endpos[1] = end[1];
+	trace->endpos[2] = end[2];
+
+	hull = &sv.models[1]->hulls[0]; // world point hull
+	SV_RecursiveHullCheck(hull, hull->firstclipnode, 0.0f, 1.0f, start, end, trace);
+
+	if (trace->fraction != 1.0f)
 	{
-		if (check->free)
-			continue;
-		if (check->v.solid != SOLID_BSP &&
-			check->v.solid != SOLID_BBOX &&
-			check->v.solid != SOLID_SLIDEBOX)
-			continue;
-
-		if (boxmins[0] > check->v.absmax[0]
-		|| boxmins[1] > check->v.absmax[1]
-		|| boxmins[2] > check->v.absmax[2]
-		|| boxmaxs[0] < check->v.absmin[0]
-		|| boxmaxs[1] < check->v.absmin[1]
-		|| boxmaxs[2] < check->v.absmin[2] )
-			continue;
-
-		if (check == ent)
-			continue;
-
-	// get the clipping hull
-		hull = SV_HullForEntity (check, ent->v.mins, ent->v.maxs, offset);
-	
-		VectorSubtract (origin, offset, offset);
-	
-	// test the point
-		if ( SV_HullPointContents (hull, hull->firstclipnode, offset) != CONTENTS_EMPTY )
-			return check;
+		trace->endpos[0] = (end[0] - start[0]) * trace->fraction + start[0];
+		trace->endpos[1] = (end[1] - start[1]) * trace->fraction + start[1];
+		trace->endpos[2] = (end[2] - start[2]) * trace->fraction + start[2];
 	}
 
-	return NULL;
+	if (trace->fraction < 1.0f || trace->startsolid)
+		trace->ent = &sv.edicts[0];
 }
 
+void SV_MoveBounds_Point(const vec_t *start, const vec_t *end, vec_t *boxmins, vec_t *boxmaxs)
+{
+	for (int i = 0; i < 3; i++)
+	{
+		if (end[i] > start[i])
+		{
+			boxmins[i] = start[i] - 1.0f;
+			boxmaxs[i] = end[i] + 1.0f;
+		}
+		else
+		{
+			boxmins[i] = end[i] - 1.0f;
+			boxmaxs[i] = start[i] + 1.0f;
+		}
+	}
+}
 
+trace_t SV_Move_Point(const vec_t *start, const vec_t *end, int type, edict_t *passedict)
+{
+	moveclip_t clip;
+	vec3_t worldEndPoint;
+	float worldFraction;
+
+	Q_memset(&clip, 0, sizeof(clip));
+	SV_SingleClipMoveToPoint(start, end, &clip.trace);
+
+	if (clip.trace.fraction != 0.0f)
+	{
+		worldEndPoint[0] = clip.trace.endpos[0];
+		worldEndPoint[1] = clip.trace.endpos[1];
+		worldEndPoint[2] = clip.trace.endpos[2];
+
+		clip.end = worldEndPoint;
+		worldFraction = clip.trace.fraction;
+
+		clip.type = type & 0xFF;
+		clip.ignoretrans = type >> 8;
+		clip.trace.fraction = 1.0f;
+		clip.start = start;
+		clip.mins = vec3_origin;
+		clip.maxs = vec3_origin;
+		clip.passedict = passedict;
+		clip.monsterClipBrush = 0;
+		if (type == 2)
+		{
+			for (int i = 0; i < 3; i++)
+			{
+				clip.mins2[i] = -15.0f;
+				clip.maxs2[i] = +15.0f;
+			}
+		}
+		else
+		{
+			clip.mins2[0] = 0.0;
+			clip.mins2[1] = 0.0;
+			clip.mins2[2] = 0.0;
+			clip.maxs2[0] = 0.0;
+			clip.maxs2[1] = 0.0;
+			clip.maxs2[2] = 0.0;
+		}
+		SV_MoveBounds_Point(start, worldEndPoint, clip.boxmins, clip.boxmaxs);
+		SV_ClipToLinks(sv_areanodes, &clip);
+		gGlobalVariables.trace_ent = clip.trace.ent;
+		clip.trace.fraction = worldFraction * clip.trace.fraction;
+	}
+
+	return clip.trace;
+}
+#endif // REHLDS_OPT_PEDANTIC

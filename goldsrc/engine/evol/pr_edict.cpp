@@ -353,7 +353,7 @@ void ED_Print (edict_t *ed)
 		return;
 	}
 
-	Con_Printf("\nEDICT %i:\n", NUM_FOR_EDICT(ed));
+	//Con_Printf("\nEDICT %i:\n", NUM_FOR_EDICT(ed));
 	for (i=1 ; i<progs->numfielddefs ; i++)
 	{
 		d = &pr_fielddefs[i];
@@ -446,7 +446,10 @@ void ED_PrintEdicts ()
 	
 	Con_Printf ("%i entities\n", sv.num_edicts);
 	for (i=0 ; i<sv.num_edicts ; i++)
+	{
+		//Con_Printf ("\nEDICT %i:\n",i);
 		ED_PrintNum (i);
+	}
 }
 
 /*
@@ -579,6 +582,7 @@ void ED_ParseGlobals (char *data)
 		key = ED_FindGlobal (keyname);
 		if (!key)
 		{
+			//Con_Printf ("%s is not a global\n", keyname);
 			Con_Printf ("'%s' is not a global\n", keyname);
 			continue;
 		}
@@ -645,7 +649,7 @@ qboolean	ED_ParseEpair (void *base, ddef_t *key, char *s)
 	switch (key->type & ~DEF_SAVEGLOBAL)
 	{
 	case ev_string:
-		*(string_t *)d = ED_NewString (s) - pr_strings;
+		*(string_t *)d = PR_SetString(ED_NewString (s));
 		break;
 		
 	case ev_float:
