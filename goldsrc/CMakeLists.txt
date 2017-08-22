@@ -41,8 +41,6 @@ add_subdirectory(filesystem)
 #add_subdirectory(cl_dll)
 #add_subdirectory(dlls)
 
-#add_subdirectory(rw17/game)
-
 add_subdirectory(GameUI)
 #add_subdirectory(HLTV)
 ##add_subdirectory(hookers)
@@ -54,7 +52,12 @@ add_subdirectory(launcher-gsr)
 ##add_subdirectory(rehlds)
 #add_subdirectory(render)
 #add_subdirectory(testsuite)
+
 ##add_subdirectory(tier0)
+add_subdirectory(tier0-gsr)
+
+add_subdirectory(tier1-gsr)
+
 #add_subdirectory(unittests)
 ##add_subdirectory(vgui)
 

@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 2.8) # 3.6/3.8
 project(OpenGoldSource)
 
+include(cmake/InputFilesList.cmake)
+include(cmake/MSVCRuntime.cmake)
+include(cmake/WinXPSupport.cmake)
+
+# Needs static CRT to avoid alloc issues.
+set( MSVC_RUNTIME "static" )
+
+configure_msvc_runtime()
+
 # Specify intermediate directory (for building purposes)
 #set(CMAKE_BINARY_DIR ${CMAKE_SOURCE_DIR}/build/cmake)
 

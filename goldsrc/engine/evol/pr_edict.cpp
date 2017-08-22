@@ -78,7 +78,7 @@ instead of being removed and recreated, which can cause interpolated
 angles and bad trails.
 =================
 */
-edict_t *ED_Alloc (void)
+edict_t *ED_Alloc ()
 {
 	int			i;
 	edict_t		*e;
@@ -231,37 +231,6 @@ dfunction_t *ED_FindFunction (char *name)
 	return NULL;
 }
 
-eval_t *GetEdictFieldValue(edict_t *ed, char *field)
-{
-	ddef_t			*def = NULL;
-	int				i;
-	static int		rep = 0;
-
-	for (i=0 ; i<GEFV_CACHESIZE ; i++)
-	{
-		if (!strcmp(field, gefvCache[i].field))
-		{
-			def = gefvCache[i].pcache;
-			goto Done;
-		}
-	}
-
-	def = ED_FindField (field);
-
-	if (strlen(field) < MAX_FIELD_LEN)
-	{
-		gefvCache[rep].pcache = def;
-		strcpy (gefvCache[rep].field, field);
-		rep ^= 1;
-	}
-
-Done:
-	if (!def)
-		return NULL;
-
-	return (eval_t *)((char *)&ed->v + def->ofs*4);
-}
-
 /*
 ============
 PR_ValueString
@@ -361,61 +330,6 @@ char *PR_UglyValueString (etype_t type, eval_t *val)
 	
 	return line;
 }
-
-/*
-============
-PR_GlobalString
-
-Returns a string with a description and the contents of a global,
-padded to 20 field width
-============
-*/
-char *PR_GlobalString (int ofs)
-{
-	char	*s;
-	int		i;
-	ddef_t	*def;
-	void	*val;
-	static char	line[128];
-	
-	val = (void *)&pr_globals[ofs];
-	def = ED_GlobalAtOfs(ofs);
-	if (!def)
-		sprintf (line,"%i(???)", ofs);
-	else
-	{
-		s = PR_ValueString (def->type, val);
-		sprintf (line,"%i(%s)%s", ofs, PR_GetString(def->s_name), s);
-	}
-	
-	i = strlen(line);
-	for ( ; i<20 ; i++)
-		strcat (line," ");
-	strcat (line," ");
-		
-	return line;
-}
-
-char *PR_GlobalStringNoContents (int ofs)
-{
-	int		i;
-	ddef_t	*def;
-	static char	line[128];
-	
-	def = ED_GlobalAtOfs(ofs);
-	if (!def)
-		sprintf (line,"%i(???)", ofs);
-	else
-		sprintf (line,"%i(%s)", ofs, PR_GetString(def->s_name));
-	
-	i = strlen(line);
-	for ( ; i<20 ; i++)
-		strcat (line," ");
-	strcat (line," ");
-		
-	return line;
-}
-
 
 /*
 =============
@@ -526,7 +440,7 @@ ED_PrintEdicts
 For debugging, prints all the entities in the current server
 =============
 */
-void ED_PrintEdicts (void)
+void ED_PrintEdicts ()
 {
 	int		i;
 	
@@ -542,7 +456,7 @@ ED_PrintEdict_f
 For debugging, prints a single edicy
 =============
 */
-void ED_PrintEdict_f (void)
+void ED_PrintEdict_f ()
 {
 	int		i;
 	
@@ -562,7 +476,7 @@ ED_Count
 For debugging
 =============
 */
-void ED_Count (void)
+void ED_Count ()
 {
 	int		i;
 	edict_t	*ent;
@@ -974,7 +888,7 @@ void ED_LoadFromFile (char *data)
 PR_LoadProgs
 ===============
 */
-void PR_LoadProgs (void)
+void PR_LoadProgs ()
 {
 	int		i;
 
@@ -1067,7 +981,7 @@ void PR_LoadProgs (void)
 PR_Init
 ===============
 */
-void PR_Init (void)
+void PR_Init ()
 {
 	Cmd_AddCommand ("edict", ED_PrintEdict_f);
 	Cmd_AddCommand ("edicts", ED_PrintEdicts);
