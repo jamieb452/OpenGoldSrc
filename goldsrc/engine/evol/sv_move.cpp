@@ -125,6 +125,7 @@ qboolean SV_movetest(edict_t *ent, vec_t *move, qboolean relink)
 	neworg[0] = ent->v.origin[0] + move[0];
 	neworg[1] = ent->v.origin[1] + move[1];
 	neworg[2] = ent->v.origin[2] + move[2];
+	
 	end[0] = neworg[0];
 	end[1] = neworg[1];
 
@@ -149,7 +150,7 @@ qboolean SV_movetest(edict_t *ent, vec_t *move, qboolean relink)
 			ent->v.origin[1] = ent->v.origin[1] + move[1];
 			ent->v.origin[2] = ent->v.origin[2] + move[2];
 			if (relink)
-				SV_LinkEdict(ent, TRUE);
+				SV_LinkEdict(ent, true);
 
 			ent->v.flags &= ~FL_ONGROUND;
 			return 1;
@@ -160,6 +161,7 @@ qboolean SV_movetest(edict_t *ent, vec_t *move, qboolean relink)
 	ent->v.origin[0] = trace.endpos[0];
 	ent->v.origin[1] = trace.endpos[1];
 	ent->v.origin[2] = trace.endpos[2];
+	
 	if (SV_CheckBottom(ent) == 0)
 	{
 		if (!(ent->v.flags & FL_PARTIALGROUND))
@@ -180,7 +182,7 @@ qboolean SV_movetest(edict_t *ent, vec_t *move, qboolean relink)
 	}
 
 	if (relink)
-		SV_LinkEdict(ent, TRUE);
+		SV_LinkEdict(ent, true);
 
 	return 1;
 }
@@ -201,7 +203,9 @@ qboolean SV_movestep(edict_t *ent, vec_t *move, qboolean relink)
 	start[0] = ent->v.origin[0] + move[0];
 	start[1] = ent->v.origin[1] + move[1];
 	start[2] = ent->v.origin[2] + move[2];
+	
 	monsterClipBrush = (ent->v.flags & FL_MONSTERCLIP) != 0;
+	
 	if (ent->v.flags & (FL_FLY | FL_SWIM))
 	{
 		int i = 0;
@@ -242,7 +246,7 @@ qboolean SV_movestep(edict_t *ent, vec_t *move, qboolean relink)
 		ent->v.origin[1] = trace.endpos[1];
 		ent->v.origin[2] = trace.endpos[2];
 		if (relink)
-			SV_LinkEdict(ent, TRUE);
+			SV_LinkEdict(ent, true);
 
 		return 1;
 	}
@@ -287,7 +291,7 @@ qboolean SV_movestep(edict_t *ent, vec_t *move, qboolean relink)
 		}
 
 		if (relink)
-			SV_LinkEdict(ent, TRUE);
+			SV_LinkEdict(ent, true);
 
 		return 1;
 	}
@@ -299,7 +303,7 @@ qboolean SV_movestep(edict_t *ent, vec_t *move, qboolean relink)
 	ent->v.origin[1] += move[1];
 	ent->v.origin[2] += move[2];
 	if (relink)
-		SV_LinkEdict(ent, TRUE);
+		SV_LinkEdict(ent, true);
 
 	ent->v.flags &= ~FL_ONGROUND;
 	return 1;
@@ -314,12 +318,12 @@ qboolean SV_StepDirection(edict_t *ent, float yaw, float dist)
 	move[2] = 0;
 	if (SV_movestep(ent, move, 0))
 	{
-		SV_LinkEdict(ent, TRUE);
+		SV_LinkEdict(ent, true);
 		return 1;
 	}
 	else
 	{
-		SV_LinkEdict(ent, TRUE);
+		SV_LinkEdict(ent, true);
 		return 0;
 	}
 }
@@ -328,12 +332,12 @@ qboolean SV_FlyDirection(edict_t *ent, vec_t *direction)
 {
 	if (SV_movestep(ent, direction, 0))
 	{
-		SV_LinkEdict(ent, TRUE);
+		SV_LinkEdict(ent, true);
 		return 1;
 	}
 	else
 	{
-		SV_LinkEdict(ent, TRUE);
+		SV_LinkEdict(ent, true);
 		return 0;
 	}
 }
@@ -346,6 +350,7 @@ void SV_FixCheckBottom(edict_t *ent)
 NOXREF void SV_NewChaseDir(edict_t *actor, edict_t *enemy, float dist)
 {
 	NOXREFCHECK;
+	
 	float deltax;
 	float deltay;
 	float d[3];
@@ -424,29 +429,31 @@ NOXREF void SV_NewChaseDir(edict_t *actor, edict_t *enemy, float dist)
 NOXREF qboolean SV_CloseEnough(edict_t *ent, edict_t *goal, float dist)
 {
 	NOXREFCHECK;
-	int i;
-	for (i = 0; i < 3; i++)
+	
+	for (int i = 0; i < 3; i++)
 	{
 		if (goal->v.absmin[i] > ent->v.absmax[i] + dist)
-			return FALSE;
+			return false;
 		if (goal->v.absmax[i] < ent->v.absmin[i] - dist)
-			return FALSE;
+			return false;
 	}
-	return TRUE;
+	
+	return true;
 }
 
 NOXREF qboolean SV_ReachedGoal(edict_t *ent, vec_t *vecGoal, float flDist)
 {
 	NOXREFCHECK;
-	int i;
-	for (i = 0; i < 3; i++)
+	
+	for (int i = 0; i < 3; i++)
 	{
 		if (vecGoal[i] > ent->v.absmax[i] + flDist)
-			return FALSE;
+			return false;
 		if (vecGoal[i] < ent->v.absmin[i] - flDist)
-			return FALSE;
+			return false;
 	}
-	return TRUE;
+	
+	return true;
 }
 
 void SV_NewChaseDir2(edict_t *actor, vec_t *vecGoal, float dist)

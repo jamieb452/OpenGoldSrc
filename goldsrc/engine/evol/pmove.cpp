@@ -19,10 +19,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "quakedef.h"
+//#include "pmove.h"
 
-movevars_t		movevars;
+movevars_t movevars = {};
 
-playermove_t	pmove;
+playermove_t *pmove{nullptr};
 
 int			onground;
 int			waterlevel;
@@ -45,11 +46,16 @@ vec3_t	player_maxs = {16, 16, 32};
 // #define	PM_FRICTION			6
 // #define	PM_WATERFRICTION	1
 
-void PM_InitBoxHull (void);
+void PM_InitBoxHull ();
 
-void Pmove_Init (void)
+void Pmove_Init ()
 {
 	PM_InitBoxHull ();
+}
+
+void PM_Init(playermove_t *ppm)
+{
+	//TODO: implement - Solokiller
 }
 
 #define	STEPSIZE	18
@@ -103,7 +109,7 @@ The basic solid body movement clip that slides along multiple planes
 */
 #define	MAX_CLIP_PLANES	5
 
-int PM_FlyMove (void)
+int PM_FlyMove ()
 {
 	int			bumpcount, numbumps;
 	vec3_t		dir;
@@ -230,7 +236,7 @@ PM_GroundMove
 Player is on ground, with no upwards velocity
 =============
 */
-void PM_GroundMove (void)
+void PM_GroundMove ()
 {
 	vec3_t	start, dest;
 	pmtrace_t	trace;
@@ -320,7 +326,7 @@ PM_Friction
 Handles both ground friction and water friction
 ==================
 */
-void PM_Friction (void)
+void PM_Friction ()
 {
 	float	*vel;
 	float	speed, newspeed, control;
@@ -440,7 +446,7 @@ PM_WaterMove
 
 ===================
 */
-void PM_WaterMove (void)
+void PM_WaterMove ()
 {
 	int		i;
 	vec3_t	wishvel;
@@ -500,7 +506,7 @@ PM_AirMove
 
 ===================
 */
-void PM_AirMove (void)
+void PM_AirMove ()
 {
 	int			i;
 	vec3_t		wishvel;
@@ -570,7 +576,7 @@ void PM_AirMove (void)
 PM_CatagorizePosition
 =============
 */
-void PM_CatagorizePosition (void)
+void PM_CatagorizePosition ()
 {
 	vec3_t		point;
 	int			cont;
@@ -641,7 +647,7 @@ void PM_CatagorizePosition (void)
 JumpButton
 =============
 */
-void JumpButton (void)
+void JumpButton ()
 {
 	if (pmove.dead)
 	{
@@ -687,7 +693,7 @@ void JumpButton (void)
 CheckWaterJump
 =============
 */
-void CheckWaterJump (void)
+void CheckWaterJump ()
 {
 	vec3_t	spot;
 	int		cont;
@@ -731,7 +737,7 @@ try nudging slightly on all axis to
 allow for the cut precision of the net coordinates
 =================
 */
-void NudgePosition (void)
+void NudgePosition ()
 {
 	vec3_t	base;
 	int		x, y, z;
@@ -772,7 +778,7 @@ void NudgePosition (void)
 SpectatorMove
 ===============
 */
-void SpectatorMove (void)
+void SpectatorMove ()
 {
 	float	speed, drop, friction, control, newspeed, accel;
 	float	currentspeed, addspeed, accelspeed;
@@ -858,7 +864,7 @@ Numtouch and touchindex[] will be set if any of the physents
 were contacted during the move.
 =============
 */
-void PlayerMove (void)
+void PlayerMove ()
 {
 	frametime = pmove.cmd.msec * 0.001;
 	pmove.numtouch = 0;

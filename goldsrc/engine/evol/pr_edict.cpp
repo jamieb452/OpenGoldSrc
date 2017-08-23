@@ -25,6 +25,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //#include "pr_edict.h"
 //#include "progs.h"
 
+//char *pr_strings;
+//globalvars_t gGlobalVariables;
+
 /*
 =================
 ED_ClearEdict
@@ -60,7 +63,10 @@ edict_t *ED_Alloc()
 	// Search for free entity
 	for (i = svs.maxclients + 1; i < sv.num_edicts; i++)
 	{
-		e = &sv.edicts[i];
+		e = &sv.edicts[i]; // EDICT_NUM(i)
+		
+		// the first couple seconds of server time can involve a lot of
+		// freeing and allocating, so relax the replacement policy
 		if (e->free && (e->freetime <= 2.0 || sv.time - e->freetime >= 0.5))
 		{
 			ED_ClearEdict(e);
@@ -72,15 +78,14 @@ edict_t *ED_Alloc()
 	if (i >= sv.max_edicts)
 	{
 		if (!sv.max_edicts)
-		{
 			Sys_Error("%s: no edicts yet", __func__);
-		}
-		Sys_Error("%s: no free edicts", __func__);
+		
+		Sys_Error("%s: no free edicts", __func__); // Con_Printf in qw
 	}
 
 	// Use new one
 	++sv.num_edicts;
-	e = &sv.edicts[i];
+	e = &sv.edicts[i]; // EDICT_NUM(i)
 
 	ED_ClearEdict(e);
 	return e;
@@ -96,34 +101,45 @@ FIXME: walk all entities and NULL out references to this entity
 */
 void ED_Free(edict_t *ed)
 {
-	if (!ed->free)
-	{
-		SV_UnlinkEdict(ed);
-		FreeEntPrivateData(ed);
-		ed->serialnumber++;
-		ed->freetime = (float)sv.time;
-		ed->free = true;
-		ed->v.flags = 0;
-		ed->v.model = 0;
+	if(ed->free)
+		return;
 
-		ed->v.takedamage = 0;
-		ed->v.modelindex = 0;
-		ed->v.colormap = 0;
-		ed->v.skin = 0;
-		ed->v.frame = 0;
-		ed->v.scale = 0;
-		ed->v.gravity = 0;
-		ed->v.nextthink = -1.0;
-		ed->v.solid = SOLID_NOT;
+	// unlink from world bsp
+	SV_UnlinkEdict(ed);
+	
+	FreeEntPrivateData(ed);
+	
+	ed->serialnumber++;
+	
+	ed->freetime = (float)sv.time;
+	ed->free = true;
+	
+	ed->v.flags = 0;
+	ed->v.model = 0;
 
-		ed->v.origin[0] = vec3_origin[0];
-		ed->v.origin[1] = vec3_origin[1];
-		ed->v.origin[2] = vec3_origin[2];
-		ed->v.angles[0] = vec3_origin[0];
-		ed->v.angles[1] = vec3_origin[1];
-		ed->v.angles[2] = vec3_origin[2];
-	}
+	ed->v.takedamage = 0;
+	ed->v.modelindex = 0;
+	ed->v.colormap = 0;
+	ed->v.skin = 0;
+	ed->v.frame = 0;
+	ed->v.scale = 0;
+	ed->v.gravity = 0;
+	ed->v.nextthink = -1.0;
+	ed->v.solid = SOLID_NOT;
+
+	//VectorCopy(vec3_origin, ed->v.origin);
+	//VectorCopy(vec3_origin, ed->v.angles);
+	
+	ed->v.origin[0] = vec3_origin[0];
+	ed->v.origin[1] = vec3_origin[1];
+	ed->v.origin[2] = vec3_origin[2];
+	
+	ed->v.angles[0] = vec3_origin[0];
+	ed->v.angles[1] = vec3_origin[1];
+	ed->v.angles[2] = vec3_origin[2];
 }
+
+//===========================================================================
 
 /*
 =============
@@ -142,10 +158,12 @@ For debugging
 
 	for (i = 0; i < sv.num_edicts; i++)
 	{
-		ent = &sv.edicts[i];
+		ent = &sv.edicts[i]; // EDICT_NUM(i)
+		
 		if (!ent->free)
 		{
 			++active;
+			
 			models += (ent->v.model) ? 1 : 0;
 			solid += (ent->v.solid) ? 1 : 0;
 			step += (ent->v.movetype == MOVETYPE_STEP) ? 1 : 0;
@@ -194,10 +212,9 @@ char *ED_NewString(const char *string)
 			i++;
 		}
 		else
-		{
 			*new_p = string[i];
-		}
 	}
+	
 	*new_p = 0;
 
 #endif // REHLDS_FIXES
@@ -223,7 +240,8 @@ char *ED_ParseEdict(char *data, edict_t *ent)
 	char *className;
 	KeyValueData kvd;
 
-	if (ent != sv.edicts)
+	// clear it
+	if (ent != sv.edicts) // hack
 		Q_memset(&ent->v, 0, sizeof(ent->v));
 
 	InitEntityDLLFields(ent);
@@ -258,40 +276,36 @@ char *ED_ParseEdict(char *data, edict_t *ent)
 			}
 		}
 
+		// go through all the dictionary pairs
 		while (1)
 		{
+			// parse key
 			data = COM_Parse(data);
+			
 			if (com_token[0] == '}')
-			{
 				break;
-			}
+			
 			if (!data)
-			{
-				Host_Error("%s: EOF without closing brace", __func__);
-			}
+				Host_Error("%s: EOF without closing brace", __func__); // Sys_Error in qw
 
 			Q_strncpy(keyname, com_token, ARRAYSIZE(keyname) - 1);
 			keyname[ARRAYSIZE(keyname) - 1] = 0;
+			
 			// Remove tail spaces
 			for (n = Q_strlen(keyname) - 1; n >= 0 && keyname[n] == ' '; n--)
-			{
 				keyname[n] = 0;
-			}
 
+			// parse value	
 			data = COM_Parse(data);
+			
 			if (!data)
-			{
-				Host_Error("%s: EOF without closing brace", __func__);
-			}
+				Host_Error("%s: EOF without closing brace", __func__); // Sys_Error in qw
+			
 			if (com_token[0] == '}')
-			{
-				Host_Error("%s: closing brace without data", __func__);
-			}
+				Host_Error("%s: closing brace without data", __func__); // Sys_Error in qw
 
 			if (className != NULL && !Q_strcmp(className, com_token))
-			{
 				continue;
-			}
 
 			if (!Q_strcmp(keyname, "angle"))
 			{
@@ -352,56 +366,60 @@ void ED_LoadFromFile(char *data)
 
 	ent = NULL;
 	inhibit = 0;
+	
+	// parse ents
 	while (1)
 	{
+		// parse the opening brace	
 		data = COM_Parse(data);
+		
 		if (!data)
-		{
 			break;
-		}
+		
 		if (com_token[0] != '{')
-		{
-			Host_Error("%s: found %s when expecting {", __func__, com_token);
-		}
+			Host_Error("%s: found %s when expecting {", __func__, com_token); // Sys_Error
 
 		if (ent)
-		{
 			ent = ED_Alloc();
-		}
 		else
 		{
-			ent = sv.edicts;
+			ent = sv.edicts; // EDICT_NUM(0)
 			ReleaseEntityDLLFields(sv.edicts);	// TODO: May be better to call ED_ClearEdict here?
 			InitEntityDLLFields(ent);
 		}
 
 		data = ED_ParseEdict(data, ent);
+		
 		if (ent->free)
-		{
 			continue;
-		}
 
+		// remove things from different skill levels or deathmatch
 		if (deathmatch.value != 0.0 && (ent->v.spawnflags & SF_NOTINDEATHMATCH))
 		{
 			ED_Free(ent);
 			++inhibit;
+			//continue;
 		}
 		else
 		{
+			//
+			// immediately call spawn function
+			//
 			if (ent->v.classname)
 			{
 				if (gEntityInterface.pfnSpawn(ent) < 0 || (ent->v.flags & FL_KILLME))
-				{
 					ED_Free(ent);
-				}
 			}
 			else
 			{
-				Con_Printf("No classname for:\n");
+				Con_Printf("No classname for:\n"); // NOTE: WTF??
+				//ED_Print(ent); // Should be here???
 				ED_Free(ent);
+				//continue;
 			}
 		}
 	}
+	
 	Con_DPrintf("%i entities inhibited\n", inhibit);
 }
 
@@ -413,6 +431,8 @@ PR_Init
 /*NOXREF*/ void PR_Init()
 {
 	//NOXREFCHECK;
+	
+	//Cmd_AddCommand ("edictcount", ED_Count); // not present
 }
 
 edict_t *EDICT_NUM(int n)
@@ -542,19 +562,18 @@ void /*EXT_FUNC*/ FreeEntPrivateData(edict_t *pEdict)
 	if (pEdict->pvPrivateData)
 	{
 		if (gNewDLLFunctions.pfnOnFreeEntPrivateData)
-		{
 			gNewDLLFunctions.pfnOnFreeEntPrivateData(pEdict);
-		}
 
 #ifdef REHLDS_FLIGHT_REC
-		if (rehlds_flrec_pvdata.string[0] != '0') {
+		if (rehlds_flrec_pvdata.string[0] != '0')
 			FR_FreeEntPrivateData(pEdict->pvPrivateData);
-		}
 #endif // REHLDS_FLIGHT_REC
 
 		Mem_Free(pEdict->pvPrivateData);
-		pEdict->pvPrivateData = 0;
+		//pEdict->pvPrivateData = NULL;
 	}
+	
+	pEdict->pvPrivateData = NULL;
 }
 
 void FreeAllEntPrivateData()

@@ -40,7 +40,9 @@ box_planes_t box_planes;
 
 beam_planes_t beam_planes;
 
-areanode_t sv_areanodes[32];
+#define AREA_NODES 32
+
+areanode_t sv_areanodes[AREA_NODES];
 int sv_numareanodes;
 
 #ifdef REHLDS_FIXES
@@ -49,6 +51,9 @@ static link_t *touchLinksNext = NULL;
 
 cvar_t sv_force_ent_intersection = { "sv_force_ent_intersection", "0", 0, 0.0f, NULL };
 
+//============================================================================
+
+// ClearLink is used for new headnodes
 void ClearLink(link_t *l)
 {
 	l->next = l;
@@ -59,10 +64,9 @@ void RemoveLink(link_t *l)
 {
 #ifdef REHLDS_FIXES
 	if (touchLinksNext == l)
-	{
 		touchLinksNext = l->next;
-	}
 #endif // REHLDS_FIXES
+
 	l->next->prev = l->prev;
 	l->prev->next = l->next;
 }
@@ -73,23 +77,33 @@ void InsertLinkBefore(link_t *l, link_t *before)
 	l->prev = before->prev;
 	l->next->prev = l;
 	l->prev->next = l;
+	
 #ifdef REHLDS_FIXES
 	if (touchLinksNext == before)
-	{
 		touchLinksNext = l;
-	}
 #endif // REHLDS_FIXES
 }
 
 NOXREF void InsertLinkAfter(link_t *l, link_t *after)
 {
 	NOXREFCHECK;
+	
 	l->prev = after;
 	l->next = after->next;
 
-	after->next = l;
+	after->next = l; // l->prev->next = l;
 	l->next->prev = l;
 }
+
+//============================================================================
+
+/*
+===============================================================================
+
+HULL BOXES
+
+===============================================================================
+*/
 
 /*
 ===================
@@ -105,17 +119,22 @@ void SV_InitBoxHull()
 	box_hull.planes = &box_planes[0];
 	box_hull.firstclipnode = 0;
 	box_hull.lastclipnode = 5;
+	
 	Q_memcpy(&beam_hull, &box_hull, sizeof(beam_hull));
+	
 	beam_hull.planes = &beam_planes[0];
 
 	for (int i = 0; i < 6; i++)
 	{
 		int side = i & 1;
+		
 		box_clipnodes[i].planenum = i;
-		box_clipnodes[i].children[side] = -1;
+		box_clipnodes[i].children[side] = CONTENTS_EMPTY;
 		box_clipnodes[i].children[side ^ 1] = (i != 5) ? i + 1 : CONTENTS_SOLID;
-		box_planes[i].type = i >> 1;
+		
 		beam_planes[i].type = 5;
+		
+		box_planes[i].type = i >> 1;	
 		box_planes[i].normal[i >> 1] = 1.0f;
 	}
 }
@@ -128,7 +147,7 @@ To keep everything totally uniform, bounding boxes are turned into small
 BSP trees instead of being compared directly.
 ===================
 */
-hull_t *SV_HullForBox(const vec_t *mins, const vec_t *maxs)
+hull_t *SV_HullForBox(const vec_t *mins, const vec_t *maxs) // vec3_t, vec3_t
 {
 	box_planes[0].dist = maxs[0];
 	box_planes[1].dist = mins[0];
@@ -136,6 +155,7 @@ hull_t *SV_HullForBox(const vec_t *mins, const vec_t *maxs)
 	box_planes[3].dist = mins[1];
 	box_planes[4].dist = maxs[2];
 	box_planes[5].dist = mins[2];
+	
 	return &box_hull;
 }
 
@@ -819,21 +839,17 @@ SV_PointContents
 */
 int SV_PointContents(const vec_t *p) // vec3_t p
 {
-	int cont;
-	int entityContents;
-
-	cont = SV_HullPointContents(sv.worldmodel->hulls, 0, p);
+	int cont = SV_HullPointContents(sv.worldmodel->hulls, 0, p);
+	
 	if (cont <= CONTENTS_CURRENT_0 && cont >= CONTENTS_CURRENT_DOWN)
-	{
 		cont = CONTENTS_WATER;
-	}
 	else
 	{
 		if (cont == CONTENTS_SOLID)
 			return CONTENTS_SOLID;
 	}
 
-	entityContents = SV_LinkContents(&sv_areanodes[0], p);
+	int entityContents = SV_LinkContents(&sv_areanodes[0], p);
 	return (entityContents != -1) ? entityContents : cont;
 }
 
@@ -850,15 +866,14 @@ This could be a lot more efficient...
 */
 edict_t *SV_TestEntityPosition(edict_t *ent)
 {
-	trace_t trace;
-	qboolean monsterClip;
-
-	monsterClip = (ent->v.flags & FL_MONSTERCLIP) ? TRUE : FALSE;
-	trace = SV_Move(ent->v.origin, ent->v.mins, ent->v.maxs, ent->v.origin, 0, ent, monsterClip);
+	qboolean monsterClip = (ent->v.flags & FL_MONSTERCLIP) ? TRUE : FALSE;
+	
+	trace_t trace = SV_Move(ent->v.origin, ent->v.mins, ent->v.maxs, ent->v.origin, 0, ent, monsterClip);
+	
 	if (trace.startsolid)
 	{
 		SV_SetGlobalTrace(&trace);
-		return trace.ent;
+		return trace.ent; // sv.edicts in quake
 	}
 
 	return NULL;

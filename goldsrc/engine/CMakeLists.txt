@@ -42,12 +42,6 @@ file(GLOB PROJECT_SOURCES
 	${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
 )
 
-# List of headers
-file(GLOB PROJECT_HEADERS
-	${CMAKE_CURRENT_SOURCE_DIR}/*.h
-	${CMAKE_CURRENT_SOURCE_DIR}/*.hpp
-)
-
 # Add include directories
 include_directories(
 	${CMAKE_CURRENT_SOURCE_DIR}
@@ -57,28 +51,30 @@ include_directories(
 string(TOLOWER ${OGS_ENGINE_IMPL_TYPE} OGS_ENGINE_IMPL_TYPE)
 add_subdirectory(${OGS_ENGINE_IMPL_TYPE})
 
-# Detect output lib type (static/dynamic)
-if(OGS_ENGINE_STATIC)
-	set(LIB_TYPE STATIC)
-else()
-	set(LIB_TYPE MODULE)
-endif()
+if(PROJECT_SOURCES)
+	# Detect output lib type (static/dynamic)
+	if(OGS_ENGINE_STATIC)
+		set(LIB_TYPE STATIC)
+	else()
+		set(LIB_TYPE MODULE)
+	endif()
 
-# Build as static/dynamic library
-add_library(${PROJECT_TARGET_ENGINE} ${LIB_TYPE} ${PROJECT_SOURCES} ${PROJECT_HEADERS})
+	# Build as static/dynamic library
+	add_library(${PROJECT_TARGET_ENGINE} ${LIB_TYPE} ${PROJECT_SOURCES} ${PROJECT_HEADERS})
 
-message(STATUS "Engine: " ${OGS_ENGINE_IMPL_TYPE} " (" ${LIB_TYPE} ")" \n
-	"    - Subsystem Impl: " ${OGS_ENGINE_SUBSYSTEM_IMPL_TYPE}
-)
-
-# Set target properties
-set_target_properties(${PROJECT_TARGET_ENGINE} PROPERTIES
-#	DEBUG_POSTFIX "_d"
-	OUTPUT_NAME engine
-)
-
-if(NOT ${LIB_TYPE} EQUAL "STATIC")
-	set_target_properties(${PROJECT_TARGET_ENGINE} PROPERTIES
-		PREFIX ""
+	message(STATUS "Engine: " ${OGS_ENGINE_IMPL_TYPE} " (" ${LIB_TYPE} ")" \n
+		"    - Subsystem Impl: " ${OGS_ENGINE_SUBSYSTEM_IMPL_TYPE}
 	)
+
+	# Set target properties
+	set_target_properties(${PROJECT_TARGET_ENGINE} PROPERTIES
+	#	DEBUG_POSTFIX "_d"
+		OUTPUT_NAME engine
+	)
+
+	if(NOT ${LIB_TYPE} EQUAL "STATIC")
+		set_target_properties(${PROJECT_TARGET_ENGINE} PROPERTIES
+			PREFIX ""
+		)
+	endif()
 endif()

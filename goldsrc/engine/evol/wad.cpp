@@ -46,16 +46,18 @@ void W_CleanupName (const char *in, char *out)
 	for (i=0 ; i<16 ; i++ )
 	{
 		c = in[i];
+		
 		if (!c)
 			break;
 			
 		if (c >= 'A' && c <= 'Z')
 			c += ('a' - 'A');
+		
 		out[i] = c;
 	}
 	
 	for ( ; i< 16 ; i++ )
-		out[i] = 0;
+		out[i] = '\0';
 }
 
 /*
@@ -63,39 +65,65 @@ void W_CleanupName (const char *in, char *out)
 W_LoadWadFile
 ====================
 */
-void W_LoadWadFile (const char *filename)
+int W_LoadWadFile (const char *filename)
 {
-	lumpinfo_t		*lump_p;
-	wadinfo_t		*header;
-	unsigned		i;
-	int				infotableofs;
-	
-	wad_base = COM_LoadHunkFile (filename);
-	
-	if (!wad_base)
-		Sys_Error ("W_LoadWadFile: couldn't load %s", filename);
+	lumpinfo_t *lump_p;
+	wadinfo_t *header;
+	unsigned i;
+	int infotableofs;
+	int iWadIndex;
 
-	header = (wadinfo_t *)wad_base;
+	if( !wads[ 0 ].loaded )
+		iWadIndex = 0;
+	else if( !wads[ 1 ].loaded )
+		iWadIndex = 1;
+	else
+	{
+		Con_Printf( "No room for wad %s\n", filename );
+		return -1;
+	}
+	
+	wadlist_t* pList = &wads[ iWadIndex ];
+
+	pList->wad_base = COM_LoadHunkFile (filename);
+	
+	if( !pList->wad_base )
+	{
+		if( iWadIndex == 0 )
+			Sys_Error( "W_LoadWadFile: couldn't load %s", filename );
+
+		Con_Printf( "WARNING:  W_LoadWadFile, couldn't load %s\n", filename );
+		return -1;
+	}
+
+	Q_strncpy( pList->wadname, filename, ARRAYSIZE( pList->wadname ) );
+
+	pList->loaded = true;
+
+	header = (wadinfo_t *)pList->wad_base;
 	
 	if (header->identification[0] != 'W'
 	|| header->identification[1] != 'A'
 	|| header->identification[2] != 'D'
-	|| header->identification[3] != '2')
-		Sys_Error ("Wad file %s doesn't have WAD2 id\n",filename);
+	|| header->identification[3] != '3')
+		Sys_Error ("Wad file %s doesn't have WAD3 id\n",filename);
 		
-	wad_numlumps = LittleLong(header->numlumps);
+	pList->wad_numlumps = LittleLong(header->numlumps);
 	infotableofs = LittleLong(header->infotableofs);
-	wad_lumps = (lumpinfo_t *)(wad_base + infotableofs);
+	pList->wad_lumps = (lumpinfo_t *)(pList->wad_base + infotableofs);
 	
-	for (i=0, lump_p = wad_lumps ; i<wad_numlumps ; i++,lump_p++)
+	for (i=0, lump_p = pList->wad_lumps ; i< (unsigned int)pList->wad_numlumps ; i++, lump_p++)
 	{
 		lump_p->filepos = LittleLong(lump_p->filepos);
 		lump_p->size = LittleLong(lump_p->size);
+		
 		W_CleanupName (lump_p->name, lump_p->name);
 		
 		if (lump_p->type == TYP_QPIC)
-			SwapPic ( (qpic_t *)(wad_base + lump_p->filepos));
+			SwapPic ( (qpic_t *)(pList->wad_base + lump_p->filepos));
 	}
+	
+	return iWadIndex;
 }
 
 /*

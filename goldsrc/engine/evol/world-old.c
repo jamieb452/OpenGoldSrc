@@ -1,10 +1,5 @@
 
 
-
-
-
-
-
 typedef struct
 {
 	vec3_t		boxmins, boxmaxs;// enclose the test object along entire move
@@ -16,17 +11,7 @@ typedef struct
 	edict_t		*passedict;
 } moveclip_t;
 
-
 int SV_HullPointContents (hull_t *hull, int num, vec3_t p);
-
-/*
-===============================================================================
-
-HULL BOXES
-
-===============================================================================
-*/
-
 
 static	hull_t		box_hull;
 static	dclipnode_t	box_clipnodes[6];
@@ -35,48 +20,10 @@ static	mplane_t	box_planes[6];
 
 void SV_InitBoxHull ()
 {
-	int		i;
-	int		side;
 
 	box_hull.clipnodes = box_clipnodes;
 	box_hull.planes = box_planes;
-	box_hull.firstclipnode = 0;
-	box_hull.lastclipnode = 5;
-
-	for (i=0 ; i<6 ; i++)
-	{
-		box_clipnodes[i].planenum = i;
-		
-		side = i&1;
-		
-		box_clipnodes[i].children[side] = CONTENTS_EMPTY;
-		if (i != 5)
-			box_clipnodes[i].children[side^1] = i + 1;
-		else
-			box_clipnodes[i].children[side^1] = CONTENTS_SOLID;
-		
-		box_planes[i].type = i>>1;
-		box_planes[i].normal[i>>1] = 1;
-	}
-	
 }
-
-
-
-hull_t	*SV_HullForBox (vec3_t mins, vec3_t maxs)
-{
-	box_planes[0].dist = maxs[0];
-	box_planes[1].dist = mins[0];
-	box_planes[2].dist = maxs[1];
-	box_planes[3].dist = mins[1];
-	box_planes[4].dist = maxs[2];
-	box_planes[5].dist = mins[2];
-
-	return &box_hull;
-}
-
-
-
 
 hull_t *SV_HullForEntity (edict_t *ent, vec3_t mins, vec3_t maxs, vec3_t offset)
 {
@@ -121,12 +68,6 @@ hull_t *SV_HullForEntity (edict_t *ent, vec3_t mins, vec3_t maxs, vec3_t offset)
 
 	return hull;
 }
-
-
-
-
-areanode_t	sv_areanodes[AREA_NODES];
-int			sv_numareanodes;
 
 
 areanode_t *SV_CreateAreaNode (int depth, vec3_t mins, vec3_t maxs)
@@ -212,8 +153,6 @@ void SV_TouchLinks ( edict_t *ent, areanode_t *node )
 	if ( ent->v.absmin[node->axis] < node->dist )
 		SV_TouchLinks ( ent, node->children[1] );
 }
-
-
 
 void SV_FindTouchedLeafs (edict_t *ent, mnode_t *node)
 {
@@ -391,37 +330,10 @@ int SV_HullPointContents (hull_t *hull, int num, vec3_t p)
 
 #endif	// !id386
 
-
-
-int SV_PointContents (vec3_t p)
-{
-	int		cont;
-
-	cont = SV_HullPointContents (&sv.worldmodel->hulls[0], 0, p);
-	if (cont <= CONTENTS_CURRENT_0 && cont >= CONTENTS_CURRENT_DOWN)
-		cont = CONTENTS_WATER;
-	return cont;
-}
-
 int SV_TruePointContents (vec3_t p)
 {
 	return SV_HullPointContents (&sv.worldmodel->hulls[0], 0, p);
 }
-
-
-edict_t	*SV_TestEntityPosition (edict_t *ent)
-{
-	trace_t	trace;
-
-	trace = SV_Move (ent->v.origin, ent->v.mins, ent->v.maxs, ent->v.origin, 0, ent);
-	
-	if (trace.startsolid)
-		return sv.edicts;
-		
-	return NULL;
-}
-
-
 
 // 1/32 epsilon to keep floating point happy
 #define	DIST_EPSILON	(0.03125)

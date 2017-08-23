@@ -2633,9 +2633,12 @@ int32 ran1()
 
 float fran1()
 {
-	float temp = (float)AM*ran1();
-	if (temp > RNMX) return (float)RNMX;
-	else return temp;
+	float temp = (float)AM * ran1();
+	
+	if (temp > RNMX)
+		return (float)RNMX;
+	else
+		return temp;
 }
 
 float /*EXT_FUNC*/ RandomFloat(float flLow, float flHigh)
@@ -2657,10 +2660,9 @@ int32 /*EXT_FUNC*/ RandomLong(int32 lLow, int32 lHigh)
 	unsigned long maxAcceptable;
 	unsigned long x = lHigh - lLow + 1;
 	unsigned long n;
+	
 	if (x <= 0 || MAX_RANDOM_RANGE < x - 1)
-	{
 		return lLow;
-	}
 
 	// The following maps a uniform distribution on the interval [0,MAX_RANDOM_RANGE]
 	// to a smaller, client-specified range of [0,x-1] in a way that doesn't bias
@@ -3040,6 +3042,7 @@ int hudCheckParm(char *parm, char **ppnext)
 #endif
 
 	int i = COM_CheckParm(parm);
+	
 	if (ppnext)
 	{
 		if (i && i < com_argc - 1)
@@ -3047,6 +3050,7 @@ int hudCheckParm(char *parm, char **ppnext)
 		else
 			*ppnext = 0;
 	}
+	
 	return i;
 }
 

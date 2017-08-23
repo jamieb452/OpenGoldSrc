@@ -36,12 +36,12 @@ add_subdirectory(dedicated)
 #add_subdirectory(dedicated-legacy)
 
 add_subdirectory(engine)
-add_subdirectory(filesystem)
+##add_subdirectory(filesystem)
 
 #add_subdirectory(cl_dll)
 #add_subdirectory(dlls)
 
-add_subdirectory(GameUI)
+##add_subdirectory(GameUI)
 #add_subdirectory(HLTV)
 ##add_subdirectory(hookers)
 
@@ -54,9 +54,9 @@ add_subdirectory(launcher-gsr)
 #add_subdirectory(testsuite)
 
 ##add_subdirectory(tier0)
-add_subdirectory(tier0-gsr)
+##add_subdirectory(tier0-gsr)
 
-add_subdirectory(tier1-gsr)
+##add_subdirectory(tier1-gsr)
 
 #add_subdirectory(unittests)
 ##add_subdirectory(vgui)
@@ -65,4 +65,4 @@ add_subdirectory(tier1-gsr)
 ##add_subdirectory(vgui2)
 
 #add_subdirectory(voice)
-add_subdirectory(vstdlib)
+##add_subdirectory(vstdlib)
