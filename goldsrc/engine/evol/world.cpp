@@ -796,14 +796,14 @@ int SV_LinkContents(areanode_t *node, const vec_t *pos)
 					localPosition[0] = pos[0] - offset[0];
 					localPosition[1] = pos[1] - offset[1];
 					localPosition[2] = pos[2] - offset[2];
-					if (SV_HullPointContents(hull, hull->firstclipnode, localPosition) != -1)
+					if (SV_HullPointContents(hull, hull->firstclipnode, localPosition) != CONTENTS_EMPTY)
 						return contents;
 				}
 			}
 		}
 
 		if (node->axis == -1)
-			return -1;
+			return CONTENTS_EMPTY;
 
 #ifndef REHLDS_OPT_PEDANTIC
 		if (pos[node->axis] > node->dist)
@@ -828,7 +828,7 @@ int SV_LinkContents(areanode_t *node, const vec_t *pos)
 #endif // REHLDS_OPT_PEDANTIC
 	}
 
-	return -1;
+	return CONTENTS_EMPTY;
 }
 
 /*
@@ -850,7 +850,7 @@ int SV_PointContents(const vec_t *p) // vec3_t p
 	}
 
 	int entityContents = SV_LinkContents(&sv_areanodes[0], p);
-	return (entityContents != -1) ? entityContents : cont;
+	return (entityContents != CONTENTS_EMPTY) ? entityContents : cont;
 }
 
 //===========================================================================

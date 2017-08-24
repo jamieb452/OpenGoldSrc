@@ -470,8 +470,6 @@ void CL_Shutdown();
 
 void CL_ShutDownClientStatic();
 
-void CL_EstablishConnection (char *host);
-
 void CL_Disconnect ();
 void CL_Disconnect_f ();
 void CL_NextDemo ();
@@ -506,7 +504,6 @@ void CL_ClearState ();
 
 void CL_ReadPackets ();
 
-int  CL_ReadFromServer ();
 void CL_WriteToServer (usercmd_t *cmd);
 void CL_BaseMove (usercmd_t *cmd);
 

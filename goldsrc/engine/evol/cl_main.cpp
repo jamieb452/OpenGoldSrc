@@ -650,6 +650,7 @@ CL_EstablishConnection
 Host should be either "local" or a net address to be passed on
 =====================
 */
+/*
 void CL_EstablishConnection (const char *host) // REMOVE?
 {
 	if (cls.state == ca_dedicated)
@@ -669,6 +670,7 @@ void CL_EstablishConnection (const char *host) // REMOVE?
 	cls.state = ca_connected;
 	cls.signon = 0;				// need all the signon messages before playing
 }
+*/
 
 /*
 =====================
@@ -1197,6 +1199,7 @@ CL_ReadFromServer
 Read all incoming data from the server
 ===============
 */
+/*
 int CL_ReadFromServer () // REMOVE?
 {
 	int		ret;
@@ -1227,6 +1230,7 @@ int CL_ReadFromServer () // REMOVE?
 //
 	return 0;
 }
+*/
 
 /*
 =================
