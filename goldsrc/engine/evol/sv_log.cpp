@@ -53,25 +53,14 @@ void Log_Printf( const char* fmt, ... )
 		vsnprintf( &string[ uiLength ], sizeof( string ) - uiLength, fmt, va );
 
 		if( svs.log.net_log )
-		{
-			//TODO: implement - Solokiller
-			/*
 			Netchan_OutOfBandPrint( NS_SERVER, svs.log.net_address, "log %s", string );
-			*/
-		}
 
 		for( auto pLog = firstLog; pLog; pLog = pLog->next )
 		{
 			if( !sv_logsecret.value )
-			{
-				//TODO: implement - Solokiller
-				//Netchan_OutOfBandPrint( NS_SERVER, pLog->log.net_address, "log %s", string );
-			}
+				Netchan_OutOfBandPrint( NS_SERVER, pLog->log.net_address, "log %s", string );
 			else
-			{
-				//TODO: implement - Solokiller
-				//Netchan_OutOfBandPrint( NS_SERVER, pLog->log.net_address, "%c%s%s", 83, sv_logsecret.string, string );
-			}
+				Netchan_OutOfBandPrint( NS_SERVER, pLog->log.net_address, "%c%s%s", 83, sv_logsecret.string, string );
 		}
 
 		if( svs.log.active && ( svs.maxclients > 1 || sv_log_singleplayer.value != 0.0 ) )

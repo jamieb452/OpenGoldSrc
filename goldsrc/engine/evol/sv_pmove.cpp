@@ -26,7 +26,8 @@
 *
 */
 
-#include "precompiled.h"
+//#include "precompiled.h"
+#include "quakedef.h"
 
 void PM_SV_PlaybackEventFull(int flags, int clientindex, unsigned short eventindex, float delay, float *origin, float *angles, float fparam1, float fparam2, int iparam1, int iparam2, int bparam1, int bparam2)
 {
@@ -44,14 +45,15 @@ const char *PM_SV_TraceTexture(int ground, vec_t *vstart, vec_t *vend)
 		return NULL;
 
 	physent_t *pe = &pmove->physents[ground];
-	if (!pe->model || pe->info < 0 || pe->info >= g_psv.max_edicts)
+	if (!pe->model || pe->info < 0 || pe->info >= sv.max_edicts)
 		return NULL;
 
-	edict_t *pent = &g_psv.edicts[pe->info];
+	edict_t *pent = &sv.edicts[pe->info];
 
 	/* Unreachable code
 	if (!pent)
 		return NULL;
 	*/
+	
 	return TraceTexture(pent, vstart, vend);
 }

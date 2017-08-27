@@ -28,7 +28,10 @@ you do not wish to do so, delete this exception statement from your
 version.
 */
 
+// sv_user.c -- server code for moving users
+
 //#include "precompiled.h"
+#include "quakedef.h"
 
 typedef struct command_s
 {
@@ -127,13 +130,13 @@ void SV_ParseConsistencyResponse(client_t *pSenderClient)
 	int c = 0;
 	Q_memset(nullbuffer, 0, sizeof(nullbuffer));
 	int value = MSG_ReadShort();
-	COM_UnMunge(&net_message.data[msg_readcount], value, g_psvs.spawncount);
+	COM_UnMunge(&net_message.data[msg_readcount], value, svs.spawncount);
 	MSG_StartBitReading(&net_message);
 
 	while (MSG_ReadBits(1))
 	{
 		int idx = MSG_ReadBits(12);
-		if (idx < 0 || idx >= g_psv.num_resources)
+		if (idx < 0 || idx >= sv.num_resources)
 		{
 			c = -1;
 			break;
@@ -142,7 +145,7 @@ void SV_ParseConsistencyResponse(client_t *pSenderClient)
 #ifdef REHLDS_FIXES
 		resource_t *r = &g_rehlds_sv.resources[idx];
 #else // REHLDS_FIXES
-		resource_t *r = &g_psv.resourcelist[idx];
+		resource_t *r = &sv.resourcelist[idx];
 #endif // REHLDS_FIXES
 		if (!(r->ucFlags & RES_CHECKFILE))
 		{
@@ -162,7 +165,7 @@ void SV_ParseConsistencyResponse(client_t *pSenderClient)
 			MSG_ReadBitData(cmins, 12);
 			MSG_ReadBitData(cmaxs, 12);
 			Q_memcpy(resbuffer, r->rguc_reserved, sizeof(resbuffer));
-			COM_UnMunge(resbuffer, sizeof(resbuffer), g_psvs.spawncount);
+			COM_UnMunge(resbuffer, sizeof(resbuffer), svs.spawncount);
 			FORCE_TYPE ft = (FORCE_TYPE)resbuffer[0];
 			if (ft == force_model_samebounds)
 			{
@@ -216,7 +219,7 @@ void SV_ParseConsistencyResponse(client_t *pSenderClient)
 	}
 
 	MSG_EndBitReading(&net_message);
-	if (c < 0 || length != g_psv.num_consistency)
+	if (c < 0 || length != sv.num_consistency)
 	{
 		msg_badread = 1;
 		Con_Printf("SV_ParseConsistencyResponse:  %s:%s sent bad file data\n", host_client->name, NET_AdrToString(host_client->netchan.remote_address));
@@ -239,7 +242,7 @@ void SV_ParseConsistencyResponse(client_t *pSenderClient)
 			return;
 		}
 #else // REHLDS_FIXES
-		if (gEntityInterface.pfnInconsistentFile(host_client->edict, g_psv.resourcelist[c - 1].szFileName, dropmessage))
+		if (gEntityInterface.pfnInconsistentFile(host_client->edict, sv.resourcelist[c - 1].szFileName, dropmessage))
 		{
 			if (Q_strlen(dropmessage) > 0)
 				SV_ClientPrintf("%s", dropmessage);
@@ -256,15 +259,15 @@ void SV_ParseConsistencyResponse(client_t *pSenderClient)
 
 qboolean EXT_FUNC SV_FileInConsistencyList(const char *filename, consistency_t **ppconsist)
 {
-	for (int i = 0; i < ARRAYSIZE(g_psv.consistency_list); i++)
+	for (int i = 0; i < ARRAYSIZE(sv.consistency_list); i++)
 	{
-		if (!g_psv.consistency_list[i].filename)
+		if (!sv.consistency_list[i].filename)
 			return 0;
 
-		if (!Q_stricmp(filename, g_psv.consistency_list[i].filename))
+		if (!Q_stricmp(filename, sv.consistency_list[i].filename))
 		{
 			if (ppconsist)
-				*ppconsist = &g_psv.consistency_list[i];
+				*ppconsist = &sv.consistency_list[i];
 			return 1;
 		}
 	}
@@ -282,12 +285,12 @@ int EXT_FUNC SV_TransferConsistencyInfo_internal()
 	consistency_t *pc;
 
 	int c = 0;
-	for (int i = 0; i < g_psv.num_resources; i++)
+	for (int i = 0; i < sv.num_resources; i++)
 	{
 #ifdef REHLDS_FIXES
 		resource_t *r = &g_rehlds_sv.resources[i];
 #else // REHLDS_FIXES
-		resource_t *r = &g_psv.resourcelist[i];
+		resource_t *r = &sv.resourcelist[i];
 #endif // REHLDS_FIXES
 		if (r->ucFlags == (RES_CUSTOM | RES_REQUESTED | RES_UNK_6) || (r->ucFlags & RES_CHECKFILE))
 			continue;
@@ -333,7 +336,7 @@ int EXT_FUNC SV_TransferConsistencyInfo_internal()
 				continue;
 			}
 			r->rguc_reserved[0] = pc->check_type;
-			COM_Munge(r->rguc_reserved, 32, g_psvs.spawncount);
+			COM_Munge(r->rguc_reserved, 32, svs.spawncount);
 		}
 		++c;
 	}
@@ -344,7 +347,7 @@ void SV_SendConsistencyList(sizebuf_t *msg)
 {
 	host_client->has_force_unmodified = FALSE;
 
-	if (g_psvs.maxclients == 1 || mp_consistency.value == 0.0f || g_psv.num_consistency == 0 || host_client->proxy)
+	if (svs.maxclients == 1 || mp_consistency.value == 0.0f || sv.num_consistency == 0 || host_client->proxy)
 	{
 		MSG_WriteBits(0, 1);
 		return;
@@ -357,12 +360,12 @@ void SV_SendConsistencyList(sizebuf_t *msg)
 #ifdef REHLDS_FIXES
 	resource_t *r = g_rehlds_sv.resources;
 #else // REHLDS_FIXES
-	resource_t *r = g_psv.resourcelist;
+	resource_t *r = sv.resourcelist;
 #endif // REHLDS_FIXES
 
 	MSG_WriteBits(1, 1);
 
-	for (int i = 0; i < g_psv.num_resources; i++, r++)
+	for (int i = 0; i < sv.num_resources; i++, r++)
 	{
 		if (r && (r->ucFlags & RES_CHECKFILE) != 0)
 		{
@@ -400,7 +403,7 @@ void SV_CopyEdictToPhysent(physent_t *pe, int e, edict_t *check)
 	pe->origin[1] = check->v.origin[1];
 	pe->info = e;
 	pe->origin[2] = check->v.origin[2];
-	if (e < 1 || e > g_psvs.maxclients)
+	if (e < 1 || e > svs.maxclients)
 	{
 		pe->player = 0;
 	}
@@ -417,7 +420,7 @@ void SV_CopyEdictToPhysent(physent_t *pe, int e, edict_t *check)
 	pe->rendermode = check->v.rendermode;
 	if (check->v.solid == SOLID_BSP)
 	{
-		pe->model = g_psv.models[check->v.modelindex];
+		pe->model = sv.models[check->v.modelindex];
 		Q_strncpy(pe->name, pe->model->name, 0x20u);
 		pe->name[31] = 0;
 	}
@@ -425,7 +428,7 @@ void SV_CopyEdictToPhysent(physent_t *pe, int e, edict_t *check)
 	{
 		if (check->v.modelindex)
 		{
-			pe->model = g_psv.models[check->v.modelindex];
+			pe->model = sv.models[check->v.modelindex];
 			Q_strncpy(pe->name, pe->model->name, 0x20u);
 			pe->name[31] = 0;
 		}
@@ -459,7 +462,7 @@ void SV_CopyEdictToPhysent(physent_t *pe, int e, edict_t *check)
 		{
 			if (check->v.modelindex)
 			{
-				pModel = g_psv.models[check->v.modelindex];
+				pModel = sv.models[check->v.modelindex];
 				if (pModel)
 				{
 					if (pModel->flags & 0x200)
@@ -618,10 +621,10 @@ void SV_AddLinksToPM(areanode_t *node, vec_t *origin)
 	Q_memset(&pmove->physents[0], 0, sizeof(physent_t));
 	Q_memset(&pmove->visents[0], 0, sizeof(physent_t));
 
-	pmove->physents[0].model = g_psv.worldmodel;
-	if (g_psv.worldmodel != NULL)
+	pmove->physents[0].model = sv.worldmodel;
+	if (sv.worldmodel != NULL)
 	{
-		Q_strncpy(pmove->physents[0].name, g_psv.worldmodel->name, 0x20u);
+		Q_strncpy(pmove->physents[0].name, sv.worldmodel->name, 0x20u);
 		pmove->physents[0].name[31] = 0;
 	}
 	pmove->physents[0].origin[0] = vec3_origin[0];
@@ -734,9 +737,9 @@ void SV_ForceFullClientsUpdate()
 	msg.cursize = 0;
 	msg.maxsize = sizeof(data);
 
-	for (int i = 0; i < g_psvs.maxclients; ++i)
+	for (int i = 0; i < svs.maxclients; ++i)
 	{
-		client_t * client = &g_psvs.clients[i];
+		client_t * client = &svs.clients[i];
 		if (client == host_client || client->active || client->connected || client->spawned)
 			SV_FullClientUpdate(client, &msg);
 	}
@@ -816,7 +819,7 @@ void SV_RunCmd(usercmd_t *ucmd, int random_seed)
 		sv_player->v.clbasevelocity[2] = sv_player->v.basevelocity[2];
 	}
 	pmove->server = 1;
-	pmove->multiplayer = (qboolean)(g_psvs.maxclients > 1);
+	pmove->multiplayer = (qboolean)(svs.maxclients > 1);
 	pmove->time = float(1000.0 * host_client->svtimebase);
 	pmove->usehull = (sv_player->v.flags & 0x4000) != 0;
 	pmove->maxspeed = sv_maxspeed.value;
@@ -1086,10 +1089,10 @@ void SV_GetTrueOrigin(int player, vec_t *origin)
 	if (!host_client->lw || !host_client->lc)
 		return;
 
-	if (sv_unlag.value == 0 || g_psvs.maxclients <= 1 || !host_client->active)
+	if (sv_unlag.value == 0 || svs.maxclients <= 1 || !host_client->active)
 		return;
 
-	if (player < 0 || player >= g_psvs.maxclients)
+	if (player < 0 || player >= svs.maxclients)
 		return;
 
 	if (truepositions[player].active && truepositions[player].needrelink)
@@ -1105,10 +1108,10 @@ void SV_GetTrueMinMax(int player, float **fmin, float **fmax)
 	if (!host_client->lw || !host_client->lc)
 		return;
 
-	if (sv_unlag.value == 0.0f || g_psvs.maxclients <= 1)
+	if (sv_unlag.value == 0.0f || svs.maxclients <= 1)
 		return;
 
-	if (!host_client->active || player < 0 || player >= g_psvs.maxclients)
+	if (!host_client->active || player < 0 || player >= svs.maxclients)
 		return;
 
 	if (truepositions[player].active && truepositions[player].needrelink)
@@ -1161,13 +1164,13 @@ void SV_SetupMove(client_t *_host_client)
 	if (sv_unlag.value == 0.0f || !_host_client->lw || !_host_client->lc)
 		return;
 
-	if (g_psvs.maxclients <= 1 || !_host_client->active)
+	if (svs.maxclients <= 1 || !_host_client->active)
 		return;
 
 	nofind = 0;
-	for (int i = 0; i < g_psvs.maxclients; i++)
+	for (int i = 0; i < svs.maxclients; i++)
 	{
-		cl = &g_psvs.clients[i];
+		cl = &svs.clients[i];
 		if (cl == _host_client || !cl->active)
 			continue;
 
@@ -1234,10 +1237,10 @@ void SV_SetupMove(client_t *_host_client)
 			if (state->number <= 0)
 				continue;
 
-			if (state->number > g_psvs.maxclients)
+			if (state->number > svs.maxclients)
 				break; // players are always in the beginning of the list, no need to look more
 #else
-			if (state->number <= 0 || state->number > g_psvs.maxclients)
+			if (state->number <= 0 || state->number > svs.maxclients)
 				continue;
 #endif
 
@@ -1304,10 +1307,10 @@ void SV_SetupMove(client_t *_host_client)
 	for (i = 0; i < nextFrame->entities.num_entities; i++)
 	{
 		state = &nextFrame->entities.entities[i];
-		if (state->number <= 0 || state->number > g_psvs.maxclients)
+		if (state->number <= 0 || state->number > svs.maxclients)
 			continue;
 
-		cl = &g_psvs.clients[state->number - 1];
+		cl = &svs.clients[state->number - 1];
 		if (cl == _host_client || !cl->active)
 			continue;
 
@@ -1367,15 +1370,15 @@ void SV_RestoreMove(client_t *_host_client)
 	if (!gEntityInterface.pfnAllowLagCompensation())
 		return;
 
-	if (g_psvs.maxclients <= 1 || sv_unlag.value == 0.0)
+	if (svs.maxclients <= 1 || sv_unlag.value == 0.0)
 		return;
 
 	if (!_host_client->lw || !_host_client->lc || !_host_client->active)
 		return;
 
-	for (int i = 0; i < g_psvs.maxclients; i++)
+	for (int i = 0; i < svs.maxclients; i++)
 	{
-		cli = &g_psvs.clients[i];
+		cli = &svs.clients[i];
 		pos = &truepositions[i];
 
 		if (cli == _host_client ||! cli->active)
@@ -1404,7 +1407,7 @@ void SV_ParseStringCommand(client_t *pSenderClient)
 {
 	//check string commands rate for this player
 #ifdef REHLDS_FIXES
-	g_StringCommandsRateLimiter.StringCommandIssued(pSenderClient - g_psvs.clients);
+	g_StringCommandsRateLimiter.StringCommandIssued(pSenderClient - svs.clients);
 
 	if (!pSenderClient->connected) {
 		return; //return if player was kicked
@@ -1475,7 +1478,7 @@ void SV_EstablishTimeBase_internal(client_t *cl, usercmd_t *cmds, int dropped, i
 		runcmd_time += cmds[numcmds - 1].msec / 1000.0;
 	}
 
-	cl->svtimebase = host_frametime + g_psv.time - runcmd_time;
+	cl->svtimebase = host_frametime + sv.time - runcmd_time;
 }
 
 void SV_ParseMove(client_t *pSenderClient)
@@ -1532,7 +1535,7 @@ void SV_ParseMove(client_t *pSenderClient)
 		from = &cmds[i];
 	}
 
-	if (!g_psv.active || !(host_client->active || host_client->spawned))
+	if (!sv.active || !(host_client->active || host_client->spawned))
 		return;
 
 	if (msg_badread)
@@ -1550,7 +1553,7 @@ void SV_ParseMove(client_t *pSenderClient)
 	}
 
 	host_client->packet_loss = packet_loss;
-	if (!g_psv.paused && (g_psvs.maxclients > 1 || !key_dest) && !(sv_player->v.flags & FL_FROZEN))
+	if (!sv.paused && (svs.maxclients > 1 || !key_dest) && !(sv_player->v.flags & FL_FROZEN))
 	{
 		sv_player->v.v_angle[0] = cmds[0].viewangles[0];
 		sv_player->v.v_angle[1] = cmds[0].viewangles[1];
@@ -1584,7 +1587,7 @@ void SV_ParseMove(client_t *pSenderClient)
 	if (net_drop > 0) {
 		numCmdsToIssue += net_drop;
 	}
-	g_MoveCommandRateLimiter.MoveCommandsIssued(host_client - g_psvs.clients, numCmdsToIssue);
+	g_MoveCommandRateLimiter.MoveCommandsIssued(host_client - svs.clients, numCmdsToIssue);
 
 	if (!host_client->connected) {
 		return; //return if player was kicked
@@ -1631,14 +1634,14 @@ void SV_ParseMove(client_t *pSenderClient)
 	if (frame->ping_time < 0.0)
 		frame->ping_time = 0;
 
-	if (sv_player->v.animtime > host_frametime + g_psv.time)
-		sv_player->v.animtime = float(host_frametime + g_psv.time);
+	if (sv_player->v.animtime > host_frametime + sv.time)
+		sv_player->v.animtime = float(host_frametime + sv.time);
 }
 
 void SV_ParseVoiceData(client_t *cl)
 {
 	char chReceived[4096];
-	int iClient = cl - g_psvs.clients;
+	int iClient = cl - svs.clients;
 	uint nDataLength = MSG_ReadShort();
 	if (nDataLength > sizeof(chReceived))
 	{
@@ -1648,14 +1651,14 @@ void SV_ParseVoiceData(client_t *cl)
 	}
 
 	MSG_ReadBuf(nDataLength, chReceived);
-	cl->m_lastvoicetime = g_psv.time;
+	cl->m_lastvoicetime = sv.time;
 
 	if (sv_voiceenable.value == 0.0f)
 		return;
 
-	for (int i = 0; i < g_psvs.maxclients; i++)
+	for (int i = 0; i < svs.maxclients; i++)
 	{
-		client_t *pDestClient = &g_psvs.clients[i];
+		client_t *pDestClient = &svs.clients[i];
 		if (!((1 << (i & 0x1F)) & cl->m_VoiceStreams[i >> 5]) && i != iClient)
 			continue;
 
@@ -1769,9 +1772,9 @@ void SV_ExecuteClientMessage(client_t *cl)
 
 qboolean SV_SetPlayer(int idnum)
 {
-	for (int i = 0; i < g_psvs.maxclients; i++)
+	for (int i = 0; i < svs.maxclients; i++)
 	{
-		client_t *cl = &g_psvs.clients[i];
+		client_t *cl = &svs.clients[i];
 		if (!cl->spawned || !cl->active || !cl->connected)
 			continue;
 
@@ -1859,24 +1862,24 @@ void SV_FullUpdate_f()
 	if (host_client->active)
 	{
 		entIndex = IndexOfEdict(host_client->edict);
-		if (s_LastFullUpdate[entIndex] > g_psv.time)
+		if (s_LastFullUpdate[entIndex] > sv.time)
 			s_LastFullUpdate[entIndex] = 0;
 
-		ltime = g_psv.time - s_LastFullUpdate[entIndex];
+		ltime = sv.time - s_LastFullUpdate[entIndex];
 		if (ltime <= 0.0)
 			ltime = 0.0;
 
-		if (ltime < 0.45 && g_psv.time > 0.45)
+		if (ltime < 0.45 && sv.time > 0.45)
 		{
 			Con_DPrintf(
 				"%s is spamming fullupdate: (%f) (%f) (%f)\n",
 				host_client->name,
-				g_psv.time,
+				sv.time,
 				s_LastFullUpdate[entIndex],
 				ltime);
 			return;
 		}
-		s_LastFullUpdate[entIndex] = g_psv.time;
+		s_LastFullUpdate[entIndex] = sv.time;
 
 #ifdef REHLDS_FIXES
 		// it's not need until not active

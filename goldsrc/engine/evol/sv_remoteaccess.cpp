@@ -108,14 +108,14 @@ const char* CServerRemoteAccess::LookupStringValue(const char *variable)
 		return var->string;
 
 	if (!Q_stricmp(variable, "map"))
-		return g_psv.name;
+		return sv.name;
 
 	if (!Q_stricmp(variable, "playercount"))
 	{
 		int count = 0;
-		for (int i = 0; i < g_psvs.maxclients; i++)
+		for (int i = 0; i < svs.maxclients; i++)
 		{
-			if (g_psvs.clients[i].active || g_psvs.clients[i].spawned || g_psvs.clients[i].connected)
+			if (svs.clients[i].active || svs.clients[i].spawned || svs.clients[i].connected)
 				count++;
 		}
 
@@ -125,7 +125,7 @@ const char* CServerRemoteAccess::LookupStringValue(const char *variable)
 
 	if (!Q_stricmp(variable, "maxplayers"))
 	{
-		Q_snprintf(s_ReturnBuf, sizeof(s_ReturnBuf) - 1, "%d", g_psvs.maxclients);
+		Q_snprintf(s_ReturnBuf, sizeof(s_ReturnBuf) - 1, "%d", svs.maxclients);
 		return s_ReturnBuf;
 	}
 
@@ -153,9 +153,9 @@ void CServerRemoteAccess::GetUserBanList(CUtlBuffer &value)
 
 void CServerRemoteAccess::GetPlayerList(CUtlBuffer &value)
 {
-	for (int i = 0; i < g_psvs.maxclients; ++i)
+	for (int i = 0; i < svs.maxclients; ++i)
 	{
-		client_t* cli = &g_psvs.clients[i];
+		client_t* cli = &svs.clients[i];
 		if (!cli->active || Q_strlen(cli->name) < 1)
 			continue;
 

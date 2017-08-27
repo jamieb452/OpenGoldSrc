@@ -62,9 +62,9 @@ NOXREF void SV_CheckAllEnts()
 	int e;
 	edict_t *check;
 
-	for (e = 1; e < g_psv.num_edicts; e++)
+	for (e = 1; e < sv.num_edicts; e++)
 	{
-		check = &g_psv.edicts[e];
+		check = &sv.edicts[e];
 
 		if (check->free)
 			continue;
@@ -122,13 +122,13 @@ qboolean SV_RunThink(edict_t *ent)
 	if (!(ent->v.flags & FL_KILLME))
 	{
 		thinktime = ent->v.nextthink;
-		if (thinktime <= 0.0 || thinktime > g_psv.time + host_frametime)
+		if (thinktime <= 0.0 || thinktime > sv.time + host_frametime)
 		{
 			return TRUE;
 		}
-		if (thinktime < g_psv.time)
+		if (thinktime < sv.time)
 		{
-			thinktime = (float) g_psv.time;		// don't let things stay in the past.
+			thinktime = (float) sv.time;		// don't let things stay in the past.
 										// it is possible to start that way
 										// by a trigger with a local time.
 		}
@@ -147,7 +147,7 @@ qboolean SV_RunThink(edict_t *ent)
 
 void SV_Impact(edict_t *e1, edict_t *e2, trace_t *ptrace)
 {
-	gGlobalVariables.time = (float) g_psv.time;
+	gGlobalVariables.time = (float) sv.time;
 	if ((e1->v.flags & FL_KILLME) || (e2->v.flags & FL_KILLME))
 		return;
 
@@ -467,9 +467,9 @@ void SV_PushMove(edict_t *pusher, float movetime)
 		return;
 
 	int num_moved = 0;
-	for (int i = 1; i < g_psv.num_edicts; i++)
+	for (int i = 1; i < sv.num_edicts; i++)
 	{
-		edict_t* check = &g_psv.edicts[i];
+		edict_t* check = &sv.edicts[i];
 
 		if (check->free)
 			continue;
@@ -587,9 +587,9 @@ int SV_PushRotate(edict_t *pusher, float movetime)
 		return 1;
 
 	int num_moved = 0;
-	for (int i = 1; i < g_psv.num_edicts; i++)
+	for (int i = 1; i < sv.num_edicts; i++)
 	{
-		edict_t* check = &g_psv.edicts[i];
+		edict_t* check = &sv.edicts[i];
 		if (check->free)
 			continue;
 
@@ -622,7 +622,7 @@ int SV_PushRotate(edict_t *pusher, float movetime)
 			g_moved_edict[num_moved] = check;
 			++num_moved;
 
-			if (num_moved >= g_psv.max_edicts)
+			if (num_moved >= sv.max_edicts)
 				Sys_Error("%s: Out of edicts in simulator!\n", __func__);
 
 			vec3_t start, end, push, move;
@@ -782,7 +782,7 @@ void SV_Physics_Pusher(edict_t *ent)
 	)
 	{
 		ent->v.nextthink = 0;
-		gGlobalVariables.time = (float) g_psv.time;
+		gGlobalVariables.time = (float) sv.time;
 		gEntityInterface.pfnThink(ent);
 	}
 }
@@ -1114,7 +1114,7 @@ void PF_WaterMove(edict_t *pSelf)
 
 	if (pSelf->v.movetype == MOVETYPE_NOCLIP)
 	{
-		pSelf->v.air_finished = (float)(g_psv.time + 12.0f);
+		pSelf->v.air_finished = (float)(sv.time + 12.0f);
 		return;
 	}
 
@@ -1130,18 +1130,18 @@ void PF_WaterMove(edict_t *pSelf)
 		if (flags & FL_SWIM && (waterlevel < drownlevel)
 			|| (waterlevel >= drownlevel))
 		{
-			if (pSelf->v.air_finished < g_psv.time && pSelf->v.pain_finished < g_psv.time)
+			if (pSelf->v.air_finished < sv.time && pSelf->v.pain_finished < sv.time)
 			{
 				pSelf->v.dmg += 2.0;
 				if (pSelf->v.dmg > 15.0)
 					pSelf->v.dmg = 10.0f;
-				pSelf->v.pain_finished = (float)(g_psv.time + 1.0f);
+				pSelf->v.pain_finished = (float)(sv.time + 1.0f);
 			}
 		}
 		else
 		{
 			pSelf->v.dmg = 2.0f;
-			pSelf->v.air_finished = (float)(g_psv.time + 12.0);
+			pSelf->v.air_finished = (float)(sv.time + 12.0);
 		}
 	}
 	if (!waterlevel)
@@ -1167,28 +1167,28 @@ void PF_WaterMove(edict_t *pSelf)
 			}
 			pSelf->v.flags &= ~FL_INWATER;
 		}
-		pSelf->v.air_finished = (float)(g_psv.time + 12.0);
+		pSelf->v.air_finished = (float)(sv.time + 12.0);
 		return;
 	}
 
 	if (watertype == -5)
 	{
-		if (!(flags & (FL_IMMUNE_LAVA | FL_GODMODE)) && pSelf->v.dmgtime < g_psv.time)
+		if (!(flags & (FL_IMMUNE_LAVA | FL_GODMODE)) && pSelf->v.dmgtime < sv.time)
 		{
-			if (g_psv.time <= pSelf->v.radsuit_finished)
-				pSelf->v.dmgtime = (float)(g_psv.time + 1.0);
+			if (sv.time <= pSelf->v.radsuit_finished)
+				pSelf->v.dmgtime = (float)(sv.time + 1.0);
 			else
-				pSelf->v.dmgtime = (float)(g_psv.time + 0.2);
+				pSelf->v.dmgtime = (float)(sv.time + 0.2);
 		}
 	}
 	else
 	{
 		if (watertype == -4
 			&& !(flags & (FL_IMMUNE_SLIME | FL_GODMODE))
-			&& pSelf->v.dmgtime < g_psv.time
-			&& pSelf->v.radsuit_finished < g_psv.time)
+			&& pSelf->v.dmgtime < sv.time
+			&& pSelf->v.radsuit_finished < sv.time)
 		{
-			pSelf->v.dmgtime = (float)(g_psv.time + 1.0);
+			pSelf->v.dmgtime = (float)(sv.time + 1.0);
 		}
 	}
 
@@ -1324,18 +1324,18 @@ void SV_Physics_Step(edict_t *ent)
 
 void SV_Physics()
 {
-	gGlobalVariables.time = (float)g_psv.time;
+	gGlobalVariables.time = (float)sv.time;
 	gEntityInterface.pfnStartFrame();
-	for (int i = 0; i < g_psv.num_edicts; i++)
+	for (int i = 0; i < sv.num_edicts; i++)
 	{
-		edict_t* ent = &g_psv.edicts[i];
+		edict_t* ent = &sv.edicts[i];
 		if (ent->free)
 			continue;
 
 		if (gGlobalVariables.force_retouch != 0.0)
 			SV_LinkEdict(ent, TRUE);
 
-		if (i > 0 && i <= g_psvs.maxclients)
+		if (i > 0 && i <= svs.maxclients)
 			continue;
 
 		if (ent->v.flags & FL_ONGROUND)
