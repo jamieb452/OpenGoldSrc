@@ -1,49 +1,3 @@
-/*
-Copyright (C) 1996-1997 Id Software, Inc.
-
-This program is free software; you can redistribute it and/or
-modify it under the terms of the GNU General Public License
-as published by the Free Software Foundation; either version 2
-of the License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
-
-See the GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-
-*/
-
-// sv_main.c -- server main program
-
-//#include "precompiled.h"
-#include "quakedef.h"
-/*
-#include "client.h"
-#include "modinfo.h"
-#include "pr_edict.h"
-#include "sv_main.h"
-#include "sv_phys.h"
-#include "server.h"
-*/
-
-server_static_t	svs;
-server_t sv;
-
-char localmodels[MAX_MODELS][5];			// inline model names for precache
-
-//============================================================================
-
-//TODO: implement functions and add them - Solokiller
-playermove_t g_svmove;
-
-globalvars_t gGlobalVariables = {};
-
-bool allow_cheats = false;
 
 cvar_t sv_allow_upload = { "sv_allowupload", "1", FCVAR_SERVER };
 cvar_t mapcyclefile = { "mapcyclefile", "mapcycle.txt" };
@@ -306,18 +260,6 @@ void SV_ResetModInfo()
 	}
 }
 
-void SV_ServerShutdown()
-{
-	Steam_NotifyOfLevelChange();
-	gGlobalVariables.time = sv.time;
-
-	if (svs.dll_initialized)
-	{
-		if (sv.active)
-			gEntityInterface.pfnServerDeactivate();
-	}
-}
-
 /*
 ===============
 SV_Init
@@ -358,25 +300,6 @@ void SV_Init ()
 	
 	for (int i=0 ; i<MAX_MODELS ; i++)
 		sprintf (localmodels[i], "*%i", i);
-}
-
-void SV_Shutdown()
-{
-	g_DeltaJitRegistry.Cleanup();
-	delta_info_t *p = g_sv_delta;
-	while (p)
-	{
-		delta_info_t *n = p->next;
-		if (p->delta)
-			DELTA_FreeDescription(&p->delta);
-
-		Mem_Free(p->name);
-		Mem_Free(p->loadfile);
-		Mem_Free(p);
-		p = n;
-	}
-
-	g_sv_delta = NULL;
 }
 
 void SV_SetMaxclients()

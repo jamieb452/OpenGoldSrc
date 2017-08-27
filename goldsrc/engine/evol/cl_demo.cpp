@@ -137,7 +137,7 @@ int CL_GetMessage ()
 
 	while (1)
 	{
-		r = NET_GetMessage (cls.netcon);
+		r = NET_GetPacket();
 		
 		if (r != 1 && r != 2)
 			return r;
@@ -331,9 +331,11 @@ void CL_FinishTimeDemo ()
 	
 // the first frame didn't count
 	frames = (host_framecount - cls.td_startframe) - 1;
-	time = realtime - cls.td_starttime;
+	time = realtime - cls.td_starttime; // realtime -> Sys_FloatTime() in qw
+	
 	if (!time)
 		time = 1;
+	
 	Con_Printf ("%i frames %5.1f seconds %5.1f fps\n", frames, time, frames/time);
 }
 
@@ -357,11 +359,14 @@ void CL_TimeDemo_f ()
 
 	CL_PlayDemo_f ();
 	
+	//if (cls.state != ca_demostart) // qw
+		//return;
+	
 // cls.td_starttime will be grabbed at the second frame of the demo, so
 // all the loading time doesn't get counted
 	
 	cls.timedemo = true;
+	//cls.td_starttime = 0;
 	cls.td_startframe = host_framecount;
 	cls.td_lastframe = -1;		// get a new message this frame
 }
-

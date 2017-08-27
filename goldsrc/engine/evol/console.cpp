@@ -565,22 +565,21 @@ void Con_Print (char *txt)
 
 	// word wrap
 		if (l != con_linewidth && (con_x + l > con_linewidth) )
-			con_x = 0;
+			con_x = 0; // con->x = 0;
 
 		txt++;
 
 		if (cr)
 		{
-			con_current--;
+			con_current--; // con->current--;
 			cr = false;
 		}
-
 		
-		if (!con_x)
+		if (!con_x) // !con->x
 		{
 			Con_Linefeed ();
 		// mark time for transparent overlay
-			if (con_current >= 0)
+			if (con_current >= 0) // con->current
 				con_times[con_current % NUM_CON_TIMES] = realtime;
 		}
 
@@ -597,7 +596,7 @@ void Con_Print (char *txt)
 
 		default:	// display character and advance
 			y = con_current % con_totallines;
-			con_text[y*con_linewidth+con_x] = c | mask;
+			con_text[y*con_linewidth+con_x] = c | mask; // | con_ormask
 			con_x++;
 			if (con_x >= con_linewidth)
 				con_x = 0;

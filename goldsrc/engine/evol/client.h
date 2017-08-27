@@ -83,19 +83,6 @@ typedef struct
 	byte	translations[VID_GRADES*256];
 } scoreboard_t;
 
-/*
-// unused
-typedef struct
-{
-	int		destcolor[3];
-	int		percent;		// 0-256
-} cshift_t;
-
-#define	CSHIFT_CONTENTS	0
-#define	NUM_CSHIFTS		4
-// unused
-*/
-
 const int NAME_LENGTH = 64;
 
 //
@@ -179,7 +166,7 @@ typedef struct
 	char servername[ MAX_OSPATH ];	// name of server from original connect
 	char mapstring[ 64 ];
 
-	char spawnparms[ 2048 ];
+	char spawnparms[ 2048 ]; // MAX_MAPSTRING?
 
 	// private userinfo for sending to masterless servers
 	char userinfo[ MAX_INFO_STRING ];
@@ -244,17 +231,18 @@ extern client_static_t	cls;
 
 typedef struct
 {
-	double receivedtime;
+	// received from server
+	double receivedtime; // time message was received, or -1
 	double latency;
 
-	qboolean invalid;
+	qboolean invalid; // true if the packet_entities delta was invalid
 	qboolean choked;
 
-	entity_state_t playerstate[ MAX_CLIENTS ];
+	entity_state_t playerstate[ MAX_CLIENTS ]; // message received that reflects performing the usercmd	
 
 	double time;
 	clientdata_t clientdata;
-	weapon_data_t weapondata[ 64 ];
+	weapon_data_t weapondata[ 64 ]; // MAX_LOCAL_WEAPONS
 	packet_entities_t packet_entities;
 
 	unsigned short clientbytes;
@@ -293,7 +281,7 @@ typedef struct
 	int parsecount;
 	int parsecountmod;
 
-	int stats[ 32 ];
+	int stats[ 32 ]; // MAX_STATS
 
 	int weapons;
 
@@ -337,7 +325,7 @@ typedef struct
 	
 	cmd_t commands[ 64 ];
 
-	//local_state_t predicted_frames[ 64 ];
+	local_state_t predicted_frames[ 64 ];
 	
 	int delta_sequence;
 
@@ -349,7 +337,7 @@ typedef struct
 
 	sfx_t* sound_precache[ MAX_SOUNDS ];
 
-	consistency_t consistency_list[ 512 ];
+	consistency_t consistency_list[ 512 ]; // MAX_MODELS
 	int num_consistency;
 
 	int highentity;
@@ -410,7 +398,7 @@ extern CSysModule* hClientDLL;
 //
 // cvars
 //
-extern	cvar_t	cl_name;
+extern	cvar_t	cl_name; // simply "name" in qw
 extern	cvar_t	cl_color;
 
 extern cvar_t cl_mousegrab; // shouldn't be here?
@@ -468,6 +456,8 @@ void	CL_DecayLights ();
 void CL_Init();
 void CL_Shutdown();
 
+void CL_BeginServerConnect();
+
 void CL_ShutDownClientStatic();
 
 void CL_Disconnect ();
@@ -479,6 +469,13 @@ const int MAX_VISEDICTS = 256;
 
 extern	int				cl_numvisedicts;
 extern	cl_entity_t		*cl_visedicts[MAX_VISEDICTS];
+
+// QW has a double buffer here
+/*
+extern	int				cl_numvisedicts, cl_oldnumvisedicts;
+extern	cl_entity_t		*cl_visedicts, *cl_oldvisedicts;
+extern	cl_entity_t		cl_visedicts_list[2][MAX_VISEDICTS];
+*/
 
 //
 // cl_input

@@ -44,6 +44,8 @@ int			scr_draw_loading;
 
 vrect_t		scr_vrect;		// position of render window on screen
 
+qboolean scr_skipupdate;
+float scr_centertime_off;
 
 cvar_t		*scr_viewsize;
 cvar_t		*scr_conspeed;
@@ -72,7 +74,6 @@ int			crosshair_width, crosshair_height;
 
 void SCR_TimeRefresh_f ();
 void SCR_Loading_f ();
-
 
 /*
 ===============================================================================

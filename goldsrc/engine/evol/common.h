@@ -34,9 +34,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //#include "tier0/platform.h"
 
 #if !defined BYTE_DEFINED
-typedef unsigned char 		byte;
+typedef unsigned char 		byte; // TODO: remove?
 #define BYTE_DEFINED 1
 #endif
+
+//#define MAX_SERVERINFO_STRING 512
+//#define MAX_LOCALINFO_STRING 32768
 
 //============================================================================
 
@@ -105,7 +108,7 @@ void InsertLinkAfter (link_t *l, link_t *after);
 
 //============================================================================
 
-extern	qboolean		bigendien;
+extern	qboolean bigendien;
 
 extern	short	(*BigShort) (short l);
 extern	short	(*LittleShort) (short l);
@@ -150,20 +153,41 @@ void MSG_ReadDeltaUsercmd (struct usercmd_s *from, struct usercmd_s *cmd);
 
 //============================================================================
 
-void Q_memset (void *dest, int fill, int count);
-void Q_memcpy (void *dest, void *src, int count);
-int Q_memcmp (void *m1, void *m2, int count);
-void Q_strcpy (char *dest, char *src);
-void Q_strncpy (char *dest, char *src, int count);
-int Q_strlen (char *str);
-char *Q_strrchr (char *s, char c);
-void Q_strcat (char *dest, char *src);
-int Q_strcmp (char *s1, char *s2);
-int Q_strncmp (char *s1, char *s2, int count);
-int Q_strcasecmp (char *s1, char *s2);
-int Q_strncasecmp (char *s1, char *s2, int n);
-int	Q_atoi (char *str);
-float Q_atof (char *str);
+#ifndef OGS_CUSTOM_CRT
+	#define Q_memset(d, f, c) memset((d), (f), (c))
+	#define Q_memcpy(d, s, c) memcpy((d), (s), (c))
+	#define Q_memcmp(m1, m2, c) memcmp((m1), (m2), (c))
+	#define Q_strcpy(d, s) strcpy((d), (s))
+	#define Q_strncpy(d, s, n) strncpy((d), (s), (n))
+	#define Q_strlen(s) ((int)strlen(s))
+	#define Q_strrchr(s, c) strrchr((s), (c))
+	#define Q_strcat(d, s) strcat((d), (s))
+	#define Q_strcmp(s1, s2) strcmp((s1), (s2))
+	#define Q_strncmp(s1, s2, n) strncmp((s1), (s2), (n))
+
+	#ifdef _WIN32
+		#define Q_strcasecmp(s1, s2) _stricmp((s1), (s2))
+		#define Q_strncasecmp(s1, s2, n) _strnicmp((s1), (s2), (n))
+	#else
+		#define Q_strcasecmp(s1, s2) strcasecmp((s1), (s2))
+		#define Q_strncasecmp(s1, s2, n) strncasecmp((s1), (s2), (n))
+	#endif
+#else
+	void Q_memset (void *dest, int fill, int count);
+	void Q_memcpy (void *dest, void *src, int count);
+	int Q_memcmp (void *m1, void *m2, int count);
+	void Q_strcpy (char *dest, char *src);
+	void Q_strncpy (char *dest, char *src, int count);
+	int Q_strlen (char *str);
+	char *Q_strrchr (char *s, char c);
+	void Q_strcat (char *dest, char *src);
+	int Q_strcmp (char *s1, char *s2);
+	int Q_strncmp (char *s1, char *s2, int count);
+	int Q_strcasecmp (char *s1, char *s2);
+	int Q_strncasecmp (char *s1, char *s2, int n);
+	int	Q_atoi (char *str);
+	float Q_atof (char *str);
+#endif
 
 //============================================================================
 
@@ -201,7 +225,9 @@ bool COM_TokenWaiting( const char* buffer );
 */
 int COM_CheckParm (const char *parm);
 
-void COM_Init (/*char *path*/);
+//void COM_AddParm (const char *parm);
+
+void COM_Init (/*const char *path*/);
 void COM_Shutdown();
 
 void COM_InitArgv (int argc, const char **argv);
@@ -227,13 +253,13 @@ void COM_StripTrailingSlash( char* ppath );
 *	Creates a hierarchy of directories specified by path
 *	Modifies the given string while performing this operation, but restores it to its original state
 */
-void COM_CreatePath( char* path );
+void COM_CreatePath( const char* path );
 
-unsigned int COM_GetApproxWavePlayLength( const char* filepath );
+uint COM_GetApproxWavePlayLength( const char* filepath );
 
 char* Info_Serverinfo();
 
-char *COM_SkipPath (char *pathname);
+char *COM_SkipPath (const char *pathname);
 
 void COM_FileBase (const char *in, char *out);
 
@@ -308,7 +334,7 @@ const char* COM_SkipPath( const char* pathname );
 
 char* COM_BinPrintf( byte* buf, int nLen );
 
-unsigned char COM_Nibble( char c );
+byte COM_Nibble( char c );
 
 void COM_HexConvert( const char* pszInput, int nInputLength, byte* pOutput );
 

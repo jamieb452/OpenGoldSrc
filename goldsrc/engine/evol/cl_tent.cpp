@@ -25,39 +25,27 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 //#include "cl_tent.h"
 
 int			num_temp_entities;
-entity_t	cl_temp_entities[MAX_TEMP_ENTITIES];
+cl_entity_t	cl_temp_entities[MAX_TEMP_ENTITIES];
 beam_t		cl_beams[MAX_BEAMS];
 
-sfx_t			*cl_sfx_wizhit;
-sfx_t			*cl_sfx_knighthit;
 sfx_t			*cl_sfx_tink1;
 sfx_t			*cl_sfx_ric1;
 sfx_t			*cl_sfx_ric2;
 sfx_t			*cl_sfx_ric3;
 sfx_t			*cl_sfx_r_exp3;
-#ifdef QUAKE2
-sfx_t			*cl_sfx_imp;
-sfx_t			*cl_sfx_rail;
-#endif
 
 /*
 =================
 CL_ParseTEnt
 =================
 */
-void CL_InitTEnts (void)
+void CL_InitTEnts ()
 {
-	cl_sfx_wizhit = S_PrecacheSound ("wizard/hit.wav");
-	cl_sfx_knighthit = S_PrecacheSound ("hknight/hit.wav");
 	cl_sfx_tink1 = S_PrecacheSound ("weapons/tink1.wav");
 	cl_sfx_ric1 = S_PrecacheSound ("weapons/ric1.wav");
 	cl_sfx_ric2 = S_PrecacheSound ("weapons/ric2.wav");
 	cl_sfx_ric3 = S_PrecacheSound ("weapons/ric3.wav");
 	cl_sfx_r_exp3 = S_PrecacheSound ("weapons/r_exp3.wav");
-#ifdef QUAKE2
-	cl_sfx_imp = S_PrecacheSound ("shambler/sattck1.wav");
-	cl_sfx_rail = S_PrecacheSound ("weapons/lstart.wav");
-#endif
 }
 
 /*
@@ -115,7 +103,7 @@ void CL_ParseBeam (model_t *m)
 CL_ParseTEnt
 =================
 */
-void CL_ParseTEnt (void)
+void CL_ParseTEnt ()
 {
 	int		type;
 	vec3_t	pos;
@@ -316,37 +304,40 @@ void CL_ParseTEnt (void)
 CL_NewTempEntity
 =================
 */
-entity_t *CL_NewTempEntity (void)
+cl_entity_t *CL_NewTempEntity ()
 {
-	entity_t	*ent;
+	cl_entity_t	*ent;
 
 	if (cl_numvisedicts == MAX_VISEDICTS)
 		return NULL;
-	if (num_temp_entities == MAX_TEMP_ENTITIES)
+	
+	if (num_temp_entities == MAX_TEMP_ENTITIES) // not present in qw
 		return NULL;
+	
 	ent = &cl_temp_entities[num_temp_entities];
+	
 	Q_memset (ent, 0, sizeof(*ent));
+	
 	num_temp_entities++;
 	cl_visedicts[cl_numvisedicts] = ent;
 	cl_numvisedicts++;
 
-	ent->colormap = vid.colormap;
+	//ent->colormap = vid.colormap; // cl_entity_t doesn't have this field
 	return ent;
 }
-
 
 /*
 =================
 CL_UpdateTEnts
 =================
 */
-void CL_UpdateTEnts (void)
+void CL_UpdateTEnts ()
 {
 	int			i;
 	beam_t		*b;
 	vec3_t		dist, org;
 	float		d;
-	entity_t	*ent;
+	cl_entity_t	*ent;
 	float		yaw, pitch;
 	float		forward;
 
@@ -408,5 +399,3 @@ void CL_UpdateTEnts (void)
 	}
 	
 }
-
-
